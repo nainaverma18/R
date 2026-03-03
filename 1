@@ -1,0 +1,62 @@
+
+# Principal Component Analysis
+
+library(readxl)
+data_pca <- read_excel("C:/Users/naina/OneDrive/Desktop/NAINA/MANIPAL/SEM 2/AMDA/MOCK TEST/MTE_BA_G1.xlsx",sheet = "PCA")
+attach(data_pca)
+
+x<-cbind(E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,O1,O2,O3,O4,O5,O6,O7,O8,O9,O10)
+
+
+# Descriptive Analysis 
+library(stats)
+summary(x)
+sd(x)
+cor(x)
+
+# Principal Component Analysis
+pca1<-princomp(x,scores=TRUE,cor=TRUE)
+summary(pca1)
+
+# Loading sof Principal Components
+loadings(pca1)
+pca1$loadings
+
+# Scree Plot of Eigen values
+plot(pca1)
+screeplot(pca1, type="line", main="Scree Plot")
+
+# Bi Plot of score variables
+biplot(pca1)
+
+# Scores of the components
+pca1$scores[1:10,]
+
+# Rotation
+varimax(pca1$loadings[,1:10])
+promax(pca1$loadings[,1:10])
+
+
+
+# Factor Analysis
+fa1 <- factanal(x, factor=3, rotation="none")
+fa1
+
+fa2 <- factanal(x, factor=3, rotation="varimax")
+fa2
+
+fa3 <- factanal(x, factor=3, rotation="varimax", scores="regression")
+fa3
+fa3$scores
+
+fa4 <- factanal(x, factor=3, rotation="promax")
+fa4
+
+# KMO Statistics and Bartlett's test for Sphericity
+install.packages("REdaS")
+library(REdaS)
+KMOS(x)
+bart_spher(x)
+
+
+
