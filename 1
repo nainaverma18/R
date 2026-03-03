@@ -91,7 +91,280 @@ mean(lda_pred$class == data_pca$Gender)
 
 
 
-__________________________________________________________________________________
+
+_________________________________________________________________________________________________________________________________________
+_________________________________________________________________________________________________________________________________________
+_________________________________________________________________________________________________________________________________________
+_________________________________________________________________________________________________________________________________________
+_________________________________________________________________________________________________________________________________________
+
+
+# =========================================================
+# COMPLETE LDA ANALYSIS
+# =========================================================
+
+# -------------------------------
+# 1. Load Required Libraries
+# -------------------------------
+install.packages("MASS")
+library(MASS)
+
+# -------------------------------
+# 2. Load Dataset
+# -------------------------------
+data <- read.csv("/Users/sabarish/Downloads/Iris.csv")
+
+# Remove Id column if present
+if("Id" %in% colnames(data)) {
+  data$Id <- NULL
+}
+
+# Convert Species to factor
+data$Species <- as.factor(data$Species)
+
+# -------------------------------
+# 3. Split Data (Train-Test)
+# -------------------------------
+set.seed(123)
+
+train_index <- sample(1:nrow(data), 0.7*nrow(data))
+
+train_data <- data[train_index, ]
+test_data  <- data[-train_index, ]
+
+# -------------------------------
+# 4. Fit LDA Model
+# -------------------------------
+lda_model <- lda(Species ~ ., data=train_data)
+
+lda_model   # shows priors and means
+
+# -------------------------------
+# 5. Predictions
+# -------------------------------
+pred <- predict(lda_model, test_data)
+
+# -------------------------------
+# 6. Confusion Matrix
+# -------------------------------
+conf_matrix <- table(test_data$Species, pred$class)
+print(conf_matrix)
+
+# -------------------------------
+# 7. Accuracy
+# -------------------------------
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(accuracy)
+
+# -------------------------------
+# 8. Cross Validation
+# -------------------------------
+lda_cv <- lda(Species ~ ., data=data, CV=TRUE)
+
+cv_table <- table(data$Species, lda_cv$class)
+print(cv_table)
+
+cv_accuracy <- sum(diag(cv_table)) / sum(cv_table)
+print(cv_accuracy)
+
+# -------------------------------
+# 9. LDA Plot
+# -------------------------------
+plot(lda_model)
+
+# =========================================================
+# END OF LDA
+# =========================================================
+
+
+
+# =========================================================
+# COMPLETE FACTOR ANALYSIS
+# =========================================================
+
+# -------------------------------
+# 1. Load Required Libraries
+# -------------------------------
+install.packages("psych")
+install.packages("corrplot")
+
+library(psych)
+library(corrplot)
+
+# -------------------------------
+# 2. Load Dataset
+# -------------------------------
+data <- read.csv("/Users/sabarish/Downloads/Iris.csv")
+
+# Remove Id column if present
+if("Id" %in% colnames(data)) {
+  data$Id <- NULL
+}
+
+# Select numeric variables only
+X <- data[, sapply(data, is.numeric)]
+
+# -------------------------------
+# 3. Correlation Matrix
+# -------------------------------
+cor_matrix <- cor(X)
+print(cor_matrix)
+
+# Heatmap
+corrplot(cor_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 45)
+
+# -------------------------------
+# 4. KMO Test
+# -------------------------------
+KMO(X)
+
+# -------------------------------
+# 5. Bartlett Test
+# -------------------------------
+cortest.bartlett(X)
+
+# -------------------------------
+# 6. Eigenvalues
+# -------------------------------
+eigen_values <- eigen(cor_matrix)
+print(eigen_values$values)
+
+# -------------------------------
+# 7. Scree Plot
+# -------------------------------
+plot(eigen_values$values, type="b",
+     xlab="Factor Number",
+     ylab="Eigenvalue",
+     main="Scree Plot")
+
+abline(h=1, col="red", lty=2)
+
+# -------------------------------
+# 8. Parallel Analysis
+# -------------------------------
+fa.parallel(X)
+
+# -------------------------------
+# 9. Factor Analysis (Varimax)
+# -------------------------------
+fa_varimax <- fa(X, nfactors=2, rotate="varimax", scores=TRUE)
+print(fa_varimax, cut=0.4)
+
+# Communalities
+fa_varimax$communality
+
+# Factor Scores
+head(fa_varimax$scores)
+
+# -------------------------------
+# 10. Factor Analysis (Promax)
+# -------------------------------
+fa_promax <- fa(X, nfactors=2, rotate="promax", scores=TRUE)
+print(fa_promax, cut=0.4)
+
+# =========================================================
+# END OF FA
+# =========================================================
+
+
+
+
+# =========================================================
+# COMPLETE PCA ANALYSIS
+# =========================================================
+
+# -------------------------------
+# 1. Load Required Libraries
+# -------------------------------
+install.packages("psych")
+install.packages("corrplot")
+install.packages("factoextra")
+
+library(psych)
+library(corrplot)
+library(factoextra)
+
+# -------------------------------
+# 2. Load Dataset
+# -------------------------------
+data <- read.csv("/Users/sabarish/Downloads/Iris.csv")
+
+# Remove Id column if present
+if("Id" %in% colnames(data)) {
+  data$Id <- NULL
+}
+
+# Select only numeric variables
+X <- data[, sapply(data, is.numeric)]
+
+# -------------------------------
+# 3. Check Structure
+# -------------------------------
+str(X)
+summary(X)
+
+# -------------------------------
+# 4. Correlation Matrix
+# -------------------------------
+cor_matrix <- cor(X)
+print(cor_matrix)
+
+# -------------------------------
+# 5. Correlation Heatmap
+# -------------------------------
+corrplot(cor_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 45)
+
+# -------------------------------
+# 6. KMO Test (Optional but good)
+# -------------------------------
+KMO(X)
+
+# -------------------------------
+# 7. Bartlett Test
+# -------------------------------
+cortest.bartlett(X)
+
+# -------------------------------
+# 8. Perform PCA
+# -------------------------------
+pca_model <- prcomp(X, scale. = TRUE)
+
+# -------------------------------
+# 9. Summary of PCA
+# -------------------------------
+summary(pca_model)
+
+# -------------------------------
+# 10. Scree Plot
+# -------------------------------
+fviz_eig(pca_model)
+
+# -------------------------------
+# 11. Biplot
+# -------------------------------
+fviz_pca_biplot(pca_model, repel = TRUE)
+
+# -------------------------------
+# 12. Loadings
+# -------------------------------
+print(pca_model$rotation)
+
+# -------------------------------
+# 13. PC Scores
+# -------------------------------
+scores <- pca_model$x
+head(scores)
+
+# =========================================================
+# END OF PCA
+# =========================================================
+
+
+
+
+
 
 
                   
