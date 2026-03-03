@@ -1,12 +1,18 @@
 
 # Principal Component Analysis
 
+
+install.packages("readr")
+library(readr)       
+data <- read_csv("file.csv")
+  
+        OR
+ 
 library(readxl)
 data_pca <- read_excel("C:/Users/naina/OneDrive/Desktop/NAINA/MANIPAL/SEM 2/AMDA/MOCK TEST/MTE_BA_G1.xlsx",sheet = "PCA")
 attach(data_pca)
 
 x<-cbind(E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,O1,O2,O3,O4,O5,O6,O7,O8,O9,O10)
-
 
 # Descriptive Analysis 
 library(stats)
@@ -36,6 +42,7 @@ pca1$scores[1:10,]
 varimax(pca1$loadings[,1:10])
 promax(pca1$loadings[,1:10])
 
+__________________________________________________________________________________
 
 
 # Factor Analysis
@@ -58,5 +65,34 @@ library(REdaS)
 KMOS(x)
 bart_spher(x)
 
+__________________________________________________________________________________
 
+
+# Lda
+install.packages("MASS")   # Run once
+library(MASS)
+
+x <- data_pca[, c("E1","E2","E3","E4","E5","E6","E7","E8","E9","E10",
+                  "N1","N2","N3","N4","N5","N6","N7","N8","N9","N10",
+                  "A1","A2","A3","A4","A5","A6","A7","A8","A9","A10",
+                  "C1","C2","C3","C4","C5","C6","C7","C8","C9","C10",
+                  "O1","O2","O3","O4","O5","O6","O7","O8","O9","O10")]
+
+data_pca$Gender <- as.factor(data_pca$Gender)
+
+lda_model <- lda(Gender ~ ., data = data.frame(x, Gender=data_pca$Gender))
+lda_model
+
+lda_pred <- predict(lda_model)
+
+table(Predicted = lda_pred$class, Actual = data_pca$Gender)
+
+mean(lda_pred$class == data_pca$Gender)
+
+
+
+__________________________________________________________________________________
+
+
+                  
 
