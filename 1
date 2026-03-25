@@ -1,1 +1,164 @@
+beauty data hetroscedasticity
 
+import pandas as pd
+pd.set_option('display.max_columns', None)
+beauty=pd.read_excel("beauty.xls")
+beauty.head()
+
+beauty.info()
+-------------------------
+q1
+beauty[['female','abvavg']].groupby('female').value_counts(normalize=True).mul(100).round(2).astype(str) + '%'
+beauty['abvavg'].value_counts(normalize=True).mul(100).round(3).astype(str) + '%'
+------------------------
+q2
+%matplotlib inline
+import matplotlib.pyplot as plt
+import seaborn as sns
+# scatter plot btw wage and exp
+plt.scatter(beauty['exper'],beauty['lwage'],alpha=0.3)
+sns.scatterplot(x='exper',y='lwage',data=beauty,hue='female')
+plt.xlabel('Experience')
+plt.ylabel('Hourly Wage')
+plt.title('Scatterplot of Hourly Wage v/s Experience')
+plt.grid(True)
+plt.show()
+----------------------
+q3
+The proposed model:
+
+$$
+lwage=\beta_0+\beta_1belavg+\beta_2abvavg+\beta_3female+\beta_4educ+\beta_5exper+\beta_6exper^2+u
+$$
+........................
+import statsmodels.formula.api as smf
+model1=smf.ols('lwage~belavg+abvavg+female+educ+exper+expersq',data=beauty).fit(cov_type='HC3')
+print(model1.summary())
+...................................
+To find the "turning point" (the peak) for experience, we look at the part of the equation where the effect of experience transitions from positive to negative.
+
+For a quadritic eq $y = \beta_1 x + \beta_2 x^2$, the turning point occurs at:
+
+$$
+x^* = - \frac{\beta_{exper}}{2 \cdot \beta_{expersq}}
+$$
+
+Using our Regression coefficients:
+
+* $\beta_{exper}=0.408$
+* $\beta_{expersq}=-0.0006$
+
+$$
+x^* = - \frac{0.0408}{2\cdot(-0.0006)}
+$$
+
+$$
+x^* = 34 \ text{years}
+$$
+
+Interpretation:
+- optimal exp:
+- diminishing returns:
+- visual check:
+---------------------------------
+q4
+The modified model is:
+
+$$
+\begin{aligned}
+lwage_i &= \beta_0
++ \beta_1 belavg_i
++ \beta_2 abvavg_i
++ \beta_3 female_i
++ \beta_4 educ_i \\
+&\quad + \beta_5 exper_i
++ \beta_6 expersq_i
++ \beta_7 (female_i \times belavg_i) \\
+&\quad + \beta_8 (female_i \times abvavg_i)
++ \beta_9 (female_i \times educ_i) \\
+&\quad + \beta_{10} (female_i \times exper_i)
++ \beta_{11} (female_i \times expersq_i)
++ u_i
+\end{aligned}
+$$
+..................
+
+model2=smf.ols('lwage~belavg+abvavg+female+educ+exper+expersq+female*belavg+female*abvavg+female*educ+female*exper+female*expersq',data=beauty).fit(cov_type='HC3')
+print(model2.summary())
+
+.....................
+hypothesis = """
+female:belavg = 0,
+female:abvavg = 0,
+female:educ = 0,
+female:exper = 0,
+female:expersq = 0
+"""
+print("F-test for joint Significance of Interaction Terms:\n")
+model2.f_test(hypothesis)
+..........................
+Therefore, we reject the null hypothesis that the interaction terms are jointly zero. This indicates that the relationship between wages and the explanatory variables differs between males and females.
+
+Since our model was estimated with HC3 heteroskedasticity-robust covariance, this F-test is already heteroskedasticity robust.
+
+So the conclusion is:
+
+-- Using the heteroskodasticity-robust version does not change the qualitative conclusion. The interaction terms remain jointly significant.
+
+
+------------------------------------
+
+q5
+import warnings
+import pandas as pd
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+import statsmodels.api as sm
+
+warnings.filterwarnings("ignore")
+
+# Define explanatory variables
+X = beauty[['female', 'belavg', 'abvavg', 'educ', 'exper', 'expersq']]
+
+# Create interation terms (same as regression)
+X['female_belavg'] = X['female'] * X['belavg']
+X['female_abvavg'] = X['female'] * X['abvavg']
+X['female_educ'] = X['female'] * X['educ']
+X['female_exper'] = X['female'] * X['exper']
+X['female_expersq'] = X['female'] * X['expersq']
+
+# Add constant
+X = sm.add_constant(X)
+
+# Compute VIF
+vif = pd.DataFrame()
+vif["variable"]=X.columns
+vif["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+print(vif)
+
+---------------------------------------
+
+q6
+import pandas as pd
+import statsmodels.formula.api as smf
+
+# create men-centered versions of continuous variables
+beauty['educ_c'] = beauty['educ'] - beauty['educ'].mean()
+beauty['exper_c'] = beauty['exper'] - beauty['exper'].mean()
+
+# create the centered sq term
+beauty['expersq_c'] = beauty['exper_c']**2
+
+# re-estimate the model using centered variables
+# note: the'*' in the formula automatically includes main effects and interactions
+
+model2_centered = smf.ols(
+    'lwage ~ belavg + abvavg + female + educ_c + exper_c + expersq_c +'
+    'female:belavg + female:abvavg + female:educ_c + female:exper_c + female:expersq_c',
+    data=beauty
+).fit(cov_type='HC3')
+
+print(model2_centered.summary())
+
+--------------------------
+
+q7
