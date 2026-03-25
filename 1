@@ -1,4 +1,4 @@
-beauty data hetroscedasticity
+BEAUTY
 
 import pandas as pd
 pd.set_option('display.max_columns', None)
@@ -162,3 +162,43 @@ print(model2_centered.summary())
 --------------------------
 
 q7
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ABORTION
+
+import statsmodels.formula.api as smf
+model1=smf.ols('abortion~religion+price+laws+educ+income+picket',data=abortion).fit(cov_type='HC3')
+model1.summary()
+
+abortion['residuals']=model1.resid
+abortion['residuals'].head()
+
+abortion['fitted']=model1.fittedvalues
+abortion['fitted'].head()
+
+%matplotlib inline
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.scatterplot(x='fitted',y='residuals',data=abortion)
+plt.xlabel("Fitted values")
+plt.ylabel("Residuals")
+plt.title("Scatterplot of Residuals v/s Fitted values")
+plt.grid(True)
+plt.show()
+
+from statsmodels.stats.diagnostic import het_breuschpagan
+test=het_breuschpagan(model1.resid,model1.model.exog)
+labels=['LM Statistic','LM-Test p-value','F- Statistic','F-Test p-value']
+print(dict(zip(labels,test)))
+
+from statsmodels.stats.diagnostic import het_white
+white_test=het_white(model1.resid,model1.model.exog)
+labels=['LM Statistic','LM-Test p-value','F- Statistic','F-Test p-value']
+print(dict(zip(labels,white_test)))
+
+import numpy as np
+import statsmodels.formula.api as smf
+model2=smf.ols('np.log(abortion)~religion+price+laws+funds+educ+income+picket',data=abortion).fit(cov_type='HC3') 
+model2.summary()
