@@ -1,7 +1,4 @@
-# ------------------------------------------------------------
-# 1. IMPORT LIBRARIES
-# ------------------------------------------------------------
-
+Importing libraries
 import warnings
 warnings.filterwarnings("ignore")   # keep output focused on results, not library version notices
 
@@ -24,13 +21,599 @@ from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
     confusion_matrix, classification_report, log_loss,
-    mean_absolute_error, mean_squared_error, r2_score)
+    mean_absolute_error, mean_squared_error, r2_score
+)
 
 pd.set_option("display.max_columns", None)
 plt.rcParams["figure.figsize"] = (6, 4)
 print("All libraries loaded")
 
-##########################################################################################
+
+# Linear Regression
+
+# ============================================================
+# SIMPLE LINEAR REGRESSION
+# FUEL CONSUMPTION / CO2 EMISSIONS DATASET
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn import linear_model
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
+
+%matplotlib inline
+
+
+# ------------------------------------------------------------
+# 2. IMPORT DATASET
+# ------------------------------------------------------------
+
+data = pd.read_csv(
+    '/Users/titlibhattacharya/Downloads/FuelConsumptionCo2.csv'
+)
+
+df = pd.DataFrame(data)
+
+print(df)
+
+
+# ------------------------------------------------------------
+# 3. VIEW SAMPLE DATA
+# ------------------------------------------------------------
+
+print("\nRandom sample:")
+print(df.sample(5))
+
+
+# ------------------------------------------------------------
+# 4. SELECT REQUIRED COLUMNS
+# ------------------------------------------------------------
+
+cdf = df[
+    [
+        "ENGINESIZE",
+        "CYLINDERS",
+        "FUELCONSUMPTION_COMB",
+        "CO2EMISSIONS"
+    ]
+]
+
+print("\nSelected data:")
+print(cdf.sample(9))
+
+
+# ------------------------------------------------------------
+# 5. VISUALIZE FEATURES
+# ------------------------------------------------------------
+
+cdf.hist()
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 6. VISUALIZE RELATIONSHIPS WITH CO2 EMISSIONS
+# ============================================================
+
+# Fuel Consumption vs CO2 Emissions
+
+plt.figure(figsize=(9, 6))
+
+sns.scatterplot(
+    data=cdf,
+    x="FUELCONSUMPTION_COMB",
+    y="CO2EMISSIONS"
+)
+
+plt.xlabel(
+    "Fuel Consumption Comb",
+    fontsize=12
+)
+
+plt.ylabel(
+    "CO2 Emissions",
+    fontsize=12
+)
+
+plt.title(
+    "Relationship between Fuel Consumption and CO2 Emissions",
+    fontsize=15,
+    fontweight="bold"
+)
+
+plt.grid(
+    True,
+    alpha=0.3
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# Cylinders vs CO2 Emissions
+
+plt.figure(figsize=(9, 6))
+
+sns.scatterplot(
+    data=cdf,
+    x="CYLINDERS",
+    y="CO2EMISSIONS"
+)
+
+plt.xlabel(
+    "Cylinders",
+    fontsize=12
+)
+
+plt.ylabel(
+    "CO2 Emissions",
+    fontsize=12
+)
+
+plt.title(
+    "Cylinders vs CO2 Emissions",
+    fontsize=15,
+    fontweight="bold"
+)
+
+plt.grid(
+    True,
+    alpha=0.3
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# Engine Size vs CO2 Emissions
+
+plt.figure(figsize=(9, 6))
+
+sns.scatterplot(
+    data=cdf,
+    x="ENGINESIZE",
+    y="CO2EMISSIONS"
+)
+
+plt.xlabel(
+    "Engine Size",
+    fontsize=12
+)
+
+plt.ylabel(
+    "CO2 Emissions",
+    fontsize=12
+)
+
+plt.title(
+    "Engine Size vs CO2 Emissions",
+    fontsize=15,
+    fontweight="bold"
+)
+
+plt.grid(
+    True,
+    alpha=0.3
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 7. SELECT INPUT FEATURE AND TARGET
+# ============================================================
+
+x = cdf.ENGINESIZE.to_numpy()
+
+y = cdf.CO2EMISSIONS.to_numpy()
+
+
+# ============================================================
+# 8. TRAIN-TEST SPLIT
+# ============================================================
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.2,
+    random_state=42
+)
+
+
+print("\nTraining data shape:")
+print(np.shape(x_train))
+
+print("\nTesting data shape:")
+print(np.shape(x_test))
+
+
+# ============================================================
+# 9. CREATE LINEAR REGRESSION MODEL
+# ============================================================
+
+regressor = linear_model.LinearRegression()
+
+
+# ============================================================
+# 10. TRAIN THE MODEL
+# ============================================================
+
+regressor.fit(
+    x_train.reshape(-1, 1),
+    y_train
+)
+
+
+# ============================================================
+# 11. DISPLAY COEFFICIENT AND INTERCEPT
+# ============================================================
+
+print(
+    "\nCoefficient:",
+    regressor.coef_[0]
+)
+
+print(
+    "Intercept:",
+    regressor.intercept_
+)
+
+
+# ============================================================
+# 12. VISUALIZE REGRESSION MODEL ON TRAINING DATA
+# ============================================================
+
+plt.figure(figsize=(9, 6))
+
+plt.scatter(
+    x_train,
+    y_train
+)
+
+plt.plot(
+    x_train,
+    regressor.coef_[0] * x_train
+    + regressor.intercept_,
+    '-r'
+)
+
+plt.xlabel(
+    "Engine Size",
+    fontsize=12
+)
+
+plt.ylabel(
+    "Emissions",
+    fontsize=12
+)
+
+plt.title(
+    "Linear Regression Model",
+    fontsize=15,
+    fontweight="bold"
+)
+
+plt.grid(
+    True,
+    alpha=0.3
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 13. PREDICT TEST DATA
+# ============================================================
+
+y_pred = regressor.predict(
+    x_test.reshape(-1, 1)
+)
+
+
+# ============================================================
+# 14. MODEL EVALUATION
+# ============================================================
+
+mae = mean_absolute_error(
+    y_test,
+    y_pred
+)
+
+mse = mean_squared_error(
+    y_test,
+    y_pred
+)
+
+rmse = np.sqrt(mse)
+
+r2 = r2_score(
+    y_test,
+    y_pred
+)
+
+
+print("\n==============================")
+print("MODEL EVALUATION")
+print("==============================")
+
+print(
+    "Mean Absolute Error: %.2f"
+    % mae
+)
+
+print(
+    "Mean Squared Error: %.2f"
+    % mse
+)
+
+print(
+    "Root Mean Squared Error: %.2f"
+    % rmse
+)
+
+print(
+    "R2 Score: %.2f"
+    % r2
+)
+
+
+# ============================================================
+# 15. PLOT REGRESSION MODEL ON TEST DATA
+# ============================================================
+
+plt.figure(figsize=(9, 6))
+
+plt.scatter(
+    x_test,
+    y_test,
+    color='black'
+)
+
+plt.plot(
+    x_test,
+    regressor.coef_[0] * x_test
+    + regressor.intercept_,
+    '-r'
+)
+
+plt.xlabel(
+    "Engine Size",
+    fontsize=12
+)
+
+plt.ylabel(
+    "Emissions",
+    fontsize=12
+)
+
+plt.title(
+    "Linear Regression Model Over Test Data",
+    fontsize=15,
+    fontweight="bold"
+)
+
+plt.grid(
+    True,
+    alpha=0.3
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# Support Vector machine
+from sklearn.svm import LinearSVC
+
+svm = LinearSVC(
+    class_weight='balanced',
+    random_state=31,
+    loss='hinge',
+    fit_intercept=False
+)
+
+svm.fit(x_train, y_train)
+
+y_pred_svm = svm.decision_function(x_test)
+
+
+# ============================================================
+# SUPPORT VECTOR MACHINE - IMBALANCED DATA
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
+
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, normalize
+from sklearn.svm import LinearSVC
+from sklearn.metrics import roc_auc_score
+
+import matplotlib.pyplot as plt
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# ------------------------------------------------------------
+# 2. IMPORT DATASET
+# ------------------------------------------------------------
+
+raw_data = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/creditcard(in).csv"
+)
+
+print(raw_data)
+
+
+# ------------------------------------------------------------
+# 3. BASIC DATA CHECK
+# ------------------------------------------------------------
+
+print("\nDataset information:")
+raw_data.info()
+
+print("\nStatistical description:")
+print(raw_data.describe())
+
+
+# ------------------------------------------------------------
+# 4. CHECK CLASS IMBALANCE
+# ------------------------------------------------------------
+
+labels = raw_data.Class.unique()
+
+size = raw_data.Class.value_counts().values
+
+fig, ax = plt.subplots()
+
+ax.pie(
+    size,
+    labels=labels,
+    autopct='%1.3f%%'
+)
+
+ax.set_title(
+    'Target Variable Value Count'
+)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 5. CORRELATION WITH TARGET
+# ------------------------------------------------------------
+
+correlation_values = (
+    raw_data.corr()['Class']
+    .drop('Class')
+)
+
+correlation_values.plot(
+    kind='barh',
+    figsize=(10, 6)
+)
+
+plt.title(
+    'Correlation with Class'
+)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 6. DATA PREPROCESSING
+# ------------------------------------------------------------
+
+raw_data.iloc[:, 1:30] = (
+    StandardScaler()
+    .fit_transform(
+        raw_data.iloc[:, 1:30]
+    )
+)
+
+
+# Convert DataFrame to NumPy array
+
+data_matrix = raw_data.values
+
+
+# ------------------------------------------------------------
+# 7. DEFINE X AND y
+# ------------------------------------------------------------
+
+x = data_matrix[:, 1:30]
+
+y = data_matrix[:, 30]
+
+
+# ------------------------------------------------------------
+# 8. NORMALIZE X
+# ------------------------------------------------------------
+
+x = normalize(
+    x,
+    norm='l1'
+)
+
+
+# ------------------------------------------------------------
+# 9. TRAIN-TEST SPLIT
+# ------------------------------------------------------------
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.3,
+    random_state=42
+)
+
+
+# ============================================================
+# 10. SUPPORT VECTOR MACHINE
+# ============================================================
+
+svm = LinearSVC(
+    class_weight='balanced',
+    random_state=31,
+    loss='hinge',
+    fit_intercept=False
+)
+
+
+# ------------------------------------------------------------
+# 11. TRAIN SVM
+# ------------------------------------------------------------
+
+svm.fit(
+    x_train,
+    y_train
+)
+
+
+# ------------------------------------------------------------
+# 12. GET SVM DECISION SCORES
+# ------------------------------------------------------------
+
+y_pred_svm = svm.decision_function(
+    x_test
+)
+
+
+# ------------------------------------------------------------
+# 13. CALCULATE ROC-AUC
+# ------------------------------------------------------------
+
+roc_auc_svm = roc_auc_score(
+    y_test,
+    y_pred_svm
+)
+
+
+print(
+    'SVM ROC-AUC score: {0:.3f}'.format(
+        roc_auc_svm
+    )
+)
+
 1. Merging of two datasets
 before = len(df1)
 
@@ -41,7 +624,7 @@ after = len(df1)
 print(f"Removed {before - after} duplicate rows")
 print(f"Remaining {after} rows")
 
-#############################################
+
 #Standardize inconsistent city names- for example city name like - delhi, DelhI etc.
 df1["City"] = df1["City"].str.strip().str.title()
 
@@ -51,8 +634,7 @@ print(df1["City"])
 
 print(df1.isnull().sum())
 
-#############################################
-##Handle missing values
+#Handle missing values
 df1["Age"] = df1["Age"].fillna(df1["Age"].median())
 
 df1["Salary"] = df1["Salary"].fillna(df1["Salary"].median())
@@ -68,10 +650,9 @@ def cap_iqr(s):
     
     return s.clip(
         q1 - 1.5 * iqr,
-        q3 + 1.5 * iqr)
+        q3 + 1.5 * iqr
+    )
 
-        
-#############################################
 # Then apply it to age and salary(the missing numbers)
 df1[["Age", "Salary"]] = df1[["Age", "Salary"]].apply(cap_iqr)
 
@@ -86,21 +667,25 @@ df_integrated = pd.merge(
     df1,
     df2,
     on="CustomerID",
-    how="left")
+    how="left"
+)
 
 # Handle missing purchase information
 df_integrated["TotalPurchases"] = (
-    df_integrated["TotalPurchases"].fillna(0))
+    df_integrated["TotalPurchases"].fillna(0)
+)
 
 df_integrated["MemberSince"] = (
     df_integrated["MemberSince"]
-    .fillna(df_integrated["MemberSince"].median()))
+    .fillna(df_integrated["MemberSince"].median())
+)
 
 
 # Final dataset
 print(
     "\nIntegrated dataset "
-    "(customer + purchase information):")
+    "(customer + purchase information):"
+)
 
 print(df_integrated)
 
@@ -131,9 +716,12 @@ warnings.filterwarnings('ignore')
 # 2. IMPORT THE DATASET
 # ------------------------------------------------------------
 
-data = pd.read_csv("/Users/titlibhattacharya/Downloads/Obesity_level_prediction_dataset.csv")
+data = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/Obesity_level_prediction_dataset.csv"
+)
 
 df = pd.DataFrame(data)
+
 print("Dataset:")
 print(df)
 
@@ -189,15 +777,27 @@ scaler = StandardScaler()
 
 # Fit and transform continuous columns
 scaled_features = scaler.fit_transform(
-    data[continuous_columns])
+    data[continuous_columns]
+)
 
 
 # Convert scaled values into DataFrame
-scaled_df = pd.DataFrame(scaled_features, columns=scaler.get_feature_names_out(continuous_columns))
+scaled_df = pd.DataFrame(
+    scaled_features,
+    columns=scaler.get_feature_names_out(
+        continuous_columns
+    )
+)
 
 
 # Combine scaled columns with non-continuous columns
-scaled_data = pd.concat([data.drop(columns=continuous_columns),scaled_df],axis=1)
+scaled_data = pd.concat(
+    [
+        data.drop(columns=continuous_columns),
+        scaled_df
+    ],
+    axis=1
+)
 
 
 print("\n--- Scaled Data ---")
@@ -208,7 +808,9 @@ print(scaled_data.head())
 # 7. IDENTIFY CATEGORICAL COLUMNS
 # ------------------------------------------------------------
 
-categorical_columns = scaled_data.select_dtypes(include=['object']).columns.tolist()
+categorical_columns = scaled_data.select_dtypes(
+    include=['object']
+).columns.tolist()
 
 # Remove target variable
 categorical_columns.remove('NObeyesdad')
@@ -221,21 +823,36 @@ print(categorical_columns)
 # 8. ONE-HOT ENCODING
 # ------------------------------------------------------------
 
-encoder = OneHotEncoder(sparse_output=False,drop='first')
+encoder = OneHotEncoder(
+    sparse_output=False,
+    drop='first'
+)
 
 
 # Fit and transform categorical features
-encoded_features = encoder.fit_transform(scaled_data[categorical_columns])
+encoded_features = encoder.fit_transform(
+    scaled_data[categorical_columns]
+)
 
 
 # Convert encoded values into DataFrame
-encoded_df = pd.DataFrame(encoded_features,columns=encoder.get_feature_names_out(categorical_columns))
+encoded_df = pd.DataFrame(
+    encoded_features,
+    columns=encoder.get_feature_names_out(
+        categorical_columns
+    )
+)
 
 
 # Remove original categorical columns
 # and add encoded columns
 prepped_data = pd.concat(
-    [scaled_data.drop(columns=categorical_columns),encoded_df],axis=1)
+    [
+        scaled_data.drop(columns=categorical_columns),
+        encoded_df
+    ],
+    axis=1
+)
 
 
 print("\n--- Data After One-Hot Encoding ---")
@@ -246,7 +863,11 @@ print(prepped_data.head())
 # 9. ENCODE THE TARGET VARIABLE
 # ------------------------------------------------------------
 
-prepped_data['NObeyesdad'] = (prepped_data['NObeyesdad'].astype('category').cat.codes)
+prepped_data['NObeyesdad'] = (
+    prepped_data['NObeyesdad']
+    .astype('category')
+    .cat.codes
+)
 
 
 print("\n--- Final Prepared Data ---")
@@ -257,8 +878,13 @@ print(prepped_data.head())
 # 10. SEPARATE INPUT AND TARGET
 # ------------------------------------------------------------
 
-X = prepped_data.drop('NObeyesdad',axis=1)
+X = prepped_data.drop(
+    'NObeyesdad',
+    axis=1
+)
+
 y = prepped_data['NObeyesdad']
+
 
 print("\nShape of X:", X.shape)
 print("Shape of y:", y.shape)
@@ -268,7 +894,14 @@ print("Shape of y:", y.shape)
 # 11. SPLIT DATA INTO TRAINING AND TESTING
 # ------------------------------------------------------------
 
-X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2,random_state=42,stratify=y)
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
 
 print("\nTraining data shape:", X_train.shape)
 print("Testing data shape:", X_test.shape)
@@ -278,50 +911,76 @@ print("Testing data shape:", X_test.shape)
 # 12. ONE-VS-REST / ONE-VS-ALL LOGISTIC REGRESSION
 # ------------------------------------------------------------
 
-model_ova = OneVsRestClassifier(LogisticRegression(max_iter=1000))
+model_ova = OneVsRestClassifier(
+    LogisticRegression(max_iter=1000)
+)
 
 
 # Train model
-model_ova.fit(X_train,y_train)
+model_ova.fit(
+    X_train,
+    y_train
+)
 
 
 # Make predictions
-y_pred_ova = model_ova.predict(X_test)
+y_pred_ova = model_ova.predict(
+    X_test
+)
 
 
 # Calculate accuracy
-accuracy_ova = accuracy_score(y_test,y_pred_ova)
+accuracy_ova = accuracy_score(
+    y_test,
+    y_pred_ova
+)
 
 
 print("\n====================================")
 print("ONE-VS-ALL (OvA) STRATEGY")
 print("====================================")
 
-print(f"Accuracy: {np.round(100 * accuracy_ova, 2)}%")
+print(
+    f"Accuracy: {np.round(100 * accuracy_ova, 2)}%"
+)
 
 
 # ------------------------------------------------------------
 # 13. ONE-VS-ONE LOGISTIC REGRESSION
 # ------------------------------------------------------------
 
-model_ovo = OneVsOneClassifier(LogisticRegression(max_iter=1000))
+model_ovo = OneVsOneClassifier(
+    LogisticRegression(max_iter=1000)
+)
 
 
 # Train model
-model_ovo.fit(X_train,y_train)
+model_ovo.fit(
+    X_train,
+    y_train
+)
+
 
 # Make predictions
-y_pred_ovo = model_ovo.predict(X_test)
+y_pred_ovo = model_ovo.predict(
+    X_test
+)
+
 
 # Calculate accuracy
-accuracy_ovo = accuracy_score(y_test,y_pred_ovo)
+accuracy_ovo = accuracy_score(
+    y_test,
+    y_pred_ovo
+)
 
 
 print("\n====================================")
 print("ONE-VS-ONE (OvO) STRATEGY")
 print("====================================")
 
-print(f"Accuracy: {np.round(100 * accuracy_ovo, 2)}%")
+print(
+    f"Accuracy: {np.round(100 * accuracy_ovo, 2)}%"
+)
 
 
 # ------------------------------------------------------------
@@ -332,9 +991,15 @@ print("\n====================================")
 print("MODEL COMPARISON")
 print("====================================")
 
-print( f"One-vs-All Accuracy : "f"{np.round(100 * accuracy_ova, 2)}%")
+print(
+    f"One-vs-All Accuracy : "
+    f"{np.round(100 * accuracy_ova, 2)}%"
+)
 
-print(f"One-vs-One Accuracy : "f"{np.round(100 * accuracy_ovo, 2)}%")
+print(
+    f"One-vs-One Accuracy : "
+    f"{np.round(100 * accuracy_ovo, 2)}%"
+)
 
 
 # ============================================================
@@ -342,9 +1007,27 @@ print(f"One-vs-One Accuracy : "f"{np.round(100 * accuracy_ovo, 2)}%")
 # ============================================================
 
 
-\-------------------------------------------------------
+# ------------------------------------------------------------
+# 1. INSTALL / IMPORT LIBRARIES
+# ------------------------------------------------------------
 
+# Run this only if openpyxl is not already installed
+# pip install openpyxl
 
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import log_loss
+
+import matplotlib.pyplot as plt
+
+%matplotlib inline
+
+import warnings
+warnings.filterwarnings('ignore')
 
 
 # ------------------------------------------------------------
