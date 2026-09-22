@@ -1,528 +1,2108 @@
-# =============================================================================
-# 0) SETUP  ·  install + imports + seed              (nothing to change here)
-# =============================================================================
-# %pip install -q pandas numpy matplotlib seaborn scikit-learn openpyxl   # <- uncomment if a library is missing
-import os, glob, warnings, numpy as np, pandas as pd, matplotlib.pyplot as plt, seaborn as sns
-warnings.filterwarnings("ignore")
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
 
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+import warnings
+warnings.filterwarnings("ignore")   # keep output focused on results, not library version notices
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from sklearn.model_selection import train_test_split
-from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
+
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
 from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.svm import SVC, LinearSVC
+from sklearn.multiclass import OneVsOneClassifier, OneVsRestClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
-from sklearn.naive_bayes import GaussianNB
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
-                             confusion_matrix, ConfusionMatrixDisplay, roc_auc_score,
-                             roc_curve, log_loss, classification_report,
-                             mean_absolute_error, mean_squared_error, r2_score,
-                             silhouette_score)
+from sklearn.utils.class_weight import compute_sample_weight
 
-SEED = 42                      # same seed everywhere -> same result every run
-np.random.seed(SEED)
-sns.set_theme(style="whitegrid")
-pd.set_option("display.width", 140, "display.max_columns", 50)
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
+    confusion_matrix, classification_report, log_loss,
+    mean_absolute_error, mean_squared_error, r2_score)
 
-# --- loader helpers live here (not in the load cell) so ANY later cell can rebuild `df` ---
-def find_file(path):
-    """Wrong/typo'd path? Look for the file in ., data/, datasets/, .. instead of crashing."""
-    if path is None: return None
-    if os.path.exists(path): return path
-    pool = [p for d in (".", "data", "datasets", "..") for e in ("csv", "xlsx", "xls")
-            for p in glob.glob(os.path.join(d, f"*.{e}"))]
-    want = os.path.basename(str(path)).lower()
-    hit = [p for p in pool if os.path.basename(p).lower() == want]          # same name, other folder
-    hit = hit or [p for p in pool if want.split(".")[0] in os.path.basename(p).lower()]
-    if hit:
-        print(f"'{path}' not found -> using '{hit[0]}'")
-        return hit[0]
-    raise FileNotFoundError(f"'{path}' not found. Data files I can see: {pool or 'none'} "
-                            f"(working folder = {os.getcwd()}). Fix PATH_1 / PATH_2 in the CONFIG block.")
+pd.set_option("display.max_columns", None)
+plt.rcParams["figure.figsize"] = (6, 4)
+print("All libraries loaded")
 
-def load_any(path):
-    """Reads .csv/.xlsx/.xls without you having to care which one it is."""
-    path = find_file(path)
-    if str(path).lower().endswith((".xlsx", ".xls", ".xlsm")):
-        return pd.read_excel(path)
-    try:
-        return pd.read_csv(path, sep=None, engine="python")   # auto-detects , ; | tab
-    except Exception:
-        return pd.read_csv(path)
+##########################################################################################
+1. Merging of two datasets
+before = len(df1)
 
-def load_data():
-    """The whole loading + merging step as one function (uses PATH_1 / PATH_2 / MERGE_KEY)."""
-    p1 = find_file(PATH_1)
-    d = load_any(p1)
-    print(f"File 1: {p1} -> {d.shape}")
-    if PATH_2:
-        p2 = find_file(PATH_2)
-        d2 = load_any(p2)
-        print(f"File 2: {p2} -> {d2.shape}")
-        common = [c for c in d.columns if c in d2.columns]
-        if MERGE_KEY:                                             # explicit join
-            d = d.merge(d2, on=MERGE_KEY, how="inner")
-            print(f"Merged on {MERGE_KEY} -> {d.shape}")
-        elif set(d.columns) == set(d2.columns):                   # same columns -> stack rows
-            d = pd.concat([d, d2[d.columns]], ignore_index=True)
-            print(f"Same columns -> rows stacked -> {d.shape}")
-        elif common:                                              # shared key(s) -> join on them
-            d = d.merge(d2, on=common, how="inner")
-            print(f"Auto-merged on {common} -> {d.shape}")
-        elif len(d) == len(d2):                                   # no shared column, same length -> side by side
-            d = pd.concat([d, d2], axis=1)
-            print(f"Joined side by side -> {d.shape}")
-        else:
-            print("Files share nothing -> using file 1 only (set MERGE_KEY if they should be joined)")
-    d.columns = [str(c).strip() for c in d.columns]
-    return d
+df1 = df1.drop_duplicates(subset="CustomerID")
 
-# =============================================================================
-# 1) CONFIG  ·  THE ONLY BLOCK YOU EDIT IN THE EXAM
-# =============================================================================
-PATH_1    = "data1.csv"     # 1st file: .csv / .xlsx / .xls  (required)
-PATH_2    = None            # 2nd file or None. Can be a different type (csv + xlsx is fine)
-MERGE_KEY = None            # "id" (or ["id","year"]) to merge on a column; None = auto (stack rows / side by side)
+after = len(df1)
 
-TARGET    = None            # target column: "price"  |  index like -1 / 3  |  None = last column
-TASK      = "auto"          # "auto" | "classification" | "regression" | "clustering"
-MODELS    = "auto"          # "auto" = every model of the task, or pick: ["knn","svm"] ... names in the registry below
-DROP_COLS = []              # columns you want gone, e.g. ["Name","Ticket"]
+print(f"Removed {before - after} duplicate rows")
+print(f"Remaining {after} rows")
 
-TEST_SIZE   = 0.2           # 80/20 train-test split
-BALANCE     = False         # True -> class_weight="balanced" (use it when classes are imbalanced)
-CAP_OUTLIERS= False         # True -> clip numeric outliers to IQR limits (fit on train only, no leakage)
-DROP_DUPS   = "auto"        # "auto" = drop duplicates only if they are <=20% of rows | True = always | False = never
-K_CLUSTERS  = None          # KMeans: None = pick best k automatically (silhouette), or set 3
-RUN_SWEEPS  = True          # small loops for sub-questions: KNN k=1..10, tree depth, gini/entropy, SVM kernels
-SHOW_PLOTS  = True
+#############################################
+#Standardize inconsistent city names- for example city name like - delhi, DelhI etc.
+df1["City"] = df1["City"].str.strip().str.title()
 
-# Model registry -> DELETE or comment a line to remove a model from the run.
-CLF_MODELS = {
-    "logistic": lambda cw: LogisticRegression(max_iter=2000, class_weight=cw, random_state=SEED),
-    "tree":     lambda cw: DecisionTreeClassifier(random_state=SEED, class_weight=cw),
-    "knn":      lambda cw: KNeighborsClassifier(n_neighbors=5),
-    "svm":      lambda cw: SVC(kernel="rbf", probability=True, class_weight=cw, random_state=SEED),
-    "nb":       lambda cw: GaussianNB(),
-}
-REG_MODELS = {
-    "linear":      lambda: LinearRegression(),              # multiple linear regression (all features)
-    "linear_simple": lambda: LinearRegression(),            # simple LR on the single best-correlated feature
-    "tree_reg":    lambda: DecisionTreeRegressor(random_state=SEED),
-}
+print(df1["City"])
 
-RESULTS, FITTED, FAILED = [], {}, []     # filled automatically
+#Check missing values
 
-# =============================================================================
-# 2) LOAD DATA  ·  csv/excel, one or two files
-# =============================================================================
-df = load_data()                 # reads 1 or 2 files and merges them (helpers are in section 0)
-print("\n--- First rows ---");  print(df.head())
+print(df1.isnull().sum())
 
-# =============================================================================
-# 3) EDA + CLEANING  ·  duplicates, missing, types, outliers, quick plots
-# =============================================================================
-if "df" not in globals(): df = load_data()   # safety net: rebuilds df if this cell is run on its own
-print("\n--- Dtypes & summary ---")
-print(df.dtypes)
-print(df.describe(include="all").T.head(20))
+#############################################
+##Handle missing values
+df1["Age"] = df1["Age"].fillna(df1["Age"].median())
 
-dups = int(df.duplicated().sum())
-frac = dups / max(len(df), 1)
-has_cont = any(df[c].nunique() > 20 for c in df.columns)     # continuous data -> exact repeats = real duplicates
-if dups and (DROP_DUPS is True or (DROP_DUPS == "auto" and (has_cont or frac <= 0.2))):
-    df = df.drop_duplicates().reset_index(drop=True)
-    print(f"\nDuplicate rows removed: {dups}  -> shape {df.shape}")
-elif dups:
-    print(f"\n{dups} duplicate rows ({frac:.0%}) KEPT – with few categorical columns repeats are normal records, "
-          f"not errors. Set DROP_DUPS=True to force removal.")
-else:
-    print("\nDuplicate rows: none")
+df1["Salary"] = df1["Salary"].fillna(df1["Salary"].median())
 
-miss = df.isna().sum()
-print("\n--- Missing values (imputed later inside the pipeline: median / mode) ---")
-print(miss[miss > 0] if (miss > 0).any() else "none")
+#For missing names
+df1["Name"] = df1["Name"].fillna("Unknown")
 
-# conservative auto-drop: junk columns that never help a model
-drop = [c for c in DROP_COLS if c in df.columns]
-for c in df.columns:
-    if c in drop: continue
-    s = df[c]
-    if s.isna().mean() > 0.5:                                         drop.append(c)   # mostly empty
-    elif s.nunique(dropna=False) <= 1:                                drop.append(c)   # constant
-    elif s.nunique() == len(df) and not pd.api.types.is_float_dtype(s):drop.append(c)   # ID-like
-    elif str(c).lower() in ("id","index","unnamed: 0","no","sr","serial"): drop.append(c)
-if drop:
-    print(f"\nDropped columns (id/constant/empty/asked): {drop}")
-    df = df.drop(columns=drop)
+#Handle outliers using IQR
 
-# =============================================================================
-# 4) TARGET + TASK  ·  auto-detected, override with TARGET / TASK above
-# =============================================================================
-if "df" not in globals(): df = load_data()   # safety net: rebuilds df if this cell is run on its own
-target = None
-if TASK != "clustering":
-    if TARGET is None:            target = df.columns[-1]              # default: last column
-    elif isinstance(TARGET, int): target = df.columns[TARGET]
-    else:                         target = TARGET
-    assert target in df.columns, f"target '{target}' not found in {list(df.columns)}"
-    df = df.dropna(subset=[target]).reset_index(drop=True)             # rows without label are useless
-
-task = TASK
-if task == "auto":
-    y0 = df[target]
-    if not pd.api.types.is_numeric_dtype(y0):                       task = "classification"
-    elif y0.nunique() <= 2:                                         task = "classification"
-    elif y0.nunique() <= 15 and float(y0.dropna().mod(1).abs().max() or 0) == 0: task = "classification"
-    else:                                                           task = "regression"
-print(f"\nTASK = {task}" + (f"   TARGET = '{target}'" if target else ""))
-
-X = df.drop(columns=[target]) if target else df.copy()
-y = df[target] if target else None
-
-# drop free-text / almost-unique text columns (they explode one-hot encoding)
-txt = [c for c in X.columns if X[c].dtype == object and X[c].nunique() > max(30, 0.5 * len(X))]
-if txt:
-    print(f"Dropped high-cardinality text columns: {txt}")
-    X = X.drop(columns=txt)
-
-num_cols = X.select_dtypes(include=np.number).columns.tolist()
-cat_cols = [c for c in X.columns if c not in num_cols]
-print(f"Numeric features ({len(num_cols)}): {num_cols}\nCategorical features ({len(cat_cols)}): {cat_cols}")
-
-# encode a text target for classification (models need numbers)
-classes = None
-if task == "classification":
-    if not pd.api.types.is_numeric_dtype(y):
-        le = LabelEncoder(); y = pd.Series(le.fit_transform(y.astype(str)), index=y.index, name=target)
-        classes = list(le.classes_)
-    else:
-        classes = [str(v) for v in sorted(pd.unique(y))]
-    keep = y.map(y.value_counts()) >= 2                  # a class with 1 row breaks the split
-    if (~keep).any():
-        print(f"Dropped {int((~keep).sum())} row(s) of ultra-rare classes")
-        X, y = X[keep], y[keep]
-    vc = y.value_counts().sort_index()
-    ratio = vc.min() / vc.max()
-    print(f"Classes: {dict(zip(classes, vc.tolist()))}  | balance ratio {ratio:.2f}"
-          f"{'  -> IMBALANCED: judge by F1 / Recall / ROC-AUC, not accuracy' if ratio < 0.5 else ''}")
-
-# --- quick, useful plots only -------------------------------------------------
-if SHOW_PLOTS:
-    if target:
-        plt.figure(figsize=(5, 3))
-        (sns.countplot(x=y.map(dict(enumerate(classes))) if classes else y)
-         if task == "classification" else sns.histplot(y, kde=True, bins=30))
-        plt.title(f"Target distribution: {target}"); plt.tight_layout(); plt.show()
-    if len(num_cols) >= 1:
-        d = X[num_cols[:6]]
-        d.hist(figsize=(10, 2.2 * int(np.ceil(len(d.columns) / 3))), bins=25, layout=(int(np.ceil(len(d.columns)/3)), 3))
-        plt.suptitle("Numeric distributions"); plt.tight_layout(); plt.show()
-        plt.figure(figsize=(9, 3))
-        sns.boxplot(data=(d - d.mean()) / (d.std() + 1e-9), orient="h")
-        plt.title("Boxplot (standardised) – dots = IQR outliers"); plt.tight_layout(); plt.show()
-    if len(num_cols) >= 2:
-        plt.figure(figsize=(min(1 + .6 * len(num_cols), 10),) * 2)
-        corr = df[num_cols + ([target] if target and pd.api.types.is_numeric_dtype(df[target]) else [])].corr(numeric_only=True)
-        sns.heatmap(corr, annot=len(corr) <= 10, fmt=".2f", cmap="coolwarm", center=0)
-        plt.title("Correlation heatmap"); plt.tight_layout(); plt.show()
-
-# IQR outlier count (report; clip only if CAP_OUTLIERS=True, limits learned on train only)
-if num_cols:
-    q1, q3 = X[num_cols].quantile(.25), X[num_cols].quantile(.75)
+def cap_iqr(s):
+    q1, q3 = s.quantile([0.25, 0.75])
     iqr = q3 - q1
-    n_out = ((X[num_cols] < q1 - 1.5 * iqr) | (X[num_cols] > q3 + 1.5 * iqr)).sum()
-    print("\nIQR outliers per numeric column:"); print(n_out[n_out > 0] if (n_out > 0).any() else "none")
+    
+    return s.clip(
+        q1 - 1.5 * iqr,
+        q3 + 1.5 * iqr)
 
-# =============================================================================
-# 5) PREPROCESSING PIPELINE  ·  impute + one-hot + scale (fitted on train only)
-# =============================================================================
-def ohe():
-    try:    return OneHotEncoder(handle_unknown="ignore", sparse_output=False)   # sklearn >= 1.2
-    except TypeError: return OneHotEncoder(handle_unknown="ignore", sparse=False)
+        
+#############################################
+# Then apply it to age and salary(the missing numbers)
+df1[["Age", "Salary"]] = df1[["Age", "Salary"]].apply(cap_iqr)
 
-def make_prep(scale=True):
-    num = [("imp", SimpleImputer(strategy="median"))] + ([("sc", StandardScaler())] if scale else [])
-    return ColumnTransformer(
-        [("num", Pipeline(num), num_cols),
-         ("cat", Pipeline([("imp", SimpleImputer(strategy="most_frequent")), ("oh", ohe())]), cat_cols)],
-        remainder="drop")
+print(df1)
 
-def pipe(model, scale=True):
-    return Pipeline([("prep", make_prep(scale)), ("model", model)])
+# if there happens to be merging of dataset
+df2 = pd.DataFrame(purchases)
 
-def clip_iqr(tr, te):
-    """Optional outlier capping: limits come from TRAIN only -> no leakage."""
-    if not (CAP_OUTLIERS and num_cols): return tr, te
-    q1, q3 = tr[num_cols].quantile(.25), tr[num_cols].quantile(.75); iqr = q3 - q1
-    lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-    tr, te = tr.copy(), te.copy()
-    tr[num_cols] = tr[num_cols].clip(lo, hi, axis=1); te[num_cols] = te[num_cols].clip(lo, hi, axis=1)
-    print("Outliers clipped to train IQR limits"); return tr, te
+print(df2)
 
-# =============================================================================
-# 6) EVALUATION HELPERS  ·  one function per task, results collected in RESULTS
-# =============================================================================
-def fit_eval_clf(name, model, Xtr, ytr, Xte, yte, scale=True):
-    try:
-        p = model if isinstance(model, Pipeline) else pipe(model, scale)
-        p.fit(Xtr, ytr); pred = p.predict(Xte)
-        proba = p.predict_proba(Xte) if hasattr(p[-1], "predict_proba") else None
-        r = {"Model": name,
-             "Accuracy":  accuracy_score(yte, pred),
-             "Precision": precision_score(yte, pred, average="weighted", zero_division=0),
-             "Recall":    recall_score(yte, pred, average="weighted", zero_division=0),
-             "F1":        f1_score(yte, pred, average="weighted", zero_division=0),
-             "ROC_AUC": np.nan, "LogLoss": np.nan}
-        if proba is not None:
-            try: r["ROC_AUC"] = (roc_auc_score(yte, proba[:, 1]) if proba.shape[1] == 2
-                                 else roc_auc_score(yte, proba, multi_class="ovr", average="weighted"))
-            except Exception: pass
-            try: r["LogLoss"] = log_loss(yte, proba, labels=list(p[-1].classes_))
-            except Exception: pass
-        r["Main Score"] = r["F1"]                      # F1 = fair for balanced AND imbalanced data
-        RESULTS.append(r); FITTED[name] = p
-        auc_txt = f"  auc={r['ROC_AUC']:.3f}" if not np.isnan(r["ROC_AUC"]) else ""
-        print(f"  ok  {name:<28} acc={r['Accuracy']:.3f}  f1={r['F1']:.3f}{auc_txt}")
-        return p
-    except Exception as e:
-        FAILED.append((name, str(e)[:120])); print(f"  FAIL {name}: {str(e)[:120]}")
+df_integrated = pd.merge(
+    df1,
+    df2,
+    on="CustomerID",
+    how="left")
 
-def fit_eval_reg(name, model, Xtr, ytr, Xte, yte, cols=None):
-    try:
-        global num_cols, cat_cols
-        keep_n, keep_c = num_cols, cat_cols
-        if cols is not None:                                   # simple LR: one feature only
-            num_cols, cat_cols = [c for c in cols if c in keep_n], [c for c in cols if c in keep_c]
-        p = pipe(model); p.fit(Xtr, ytr); pred = p.predict(Xte)
-        num_cols, cat_cols = keep_n, keep_c
-        mse = mean_squared_error(yte, pred)
-        r = {"Model": name, "MAE": mean_absolute_error(yte, pred), "MSE": mse,
-             "RMSE": np.sqrt(mse), "R2": r2_score(yte, pred)}
-        r["Main Score"] = r["R2"]
-        RESULTS.append(r); FITTED[name] = p
-        print(f"  ok  {name:<28} RMSE={r['RMSE']:.3f}  MAE={r['MAE']:.3f}  R2={r['R2']:.3f}")
-        return p
-    except Exception as e:
-        num_cols, cat_cols = keep_n, keep_c
-        FAILED.append((name, str(e)[:120])); print(f"  FAIL {name}: {str(e)[:120]}")
+# Handle missing purchase information
+df_integrated["TotalPurchases"] = (
+    df_integrated["TotalPurchases"].fillna(0))
 
-# =============================================================================
-# 7) SUPERVISED RUN  ·  split -> baseline -> models -> sub-question sweeps
-# =============================================================================
-if task in ("classification", "regression"):
-    strat = y if task == "classification" and y.value_counts().min() >= 2 else None
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED, stratify=strat)
-    Xtr, Xte = clip_iqr(Xtr, Xte)
-    print(f"\nTrain {Xtr.shape} | Test {Xte.shape}"
-          f"{' | stratified' if strat is not None else ''}")
+df_integrated["MemberSince"] = (
+    df_integrated["MemberSince"]
+    .fillna(df_integrated["MemberSince"].median()))
 
-    if task == "classification":
-        cw = "balanced" if BALANCE else None
-        print("\n--- Baseline ---")
-        fit_eval_clf("BASELINE (most_frequent)", DummyClassifier(strategy="most_frequent", random_state=SEED),
-                     Xtr, ytr, Xte, yte)
-        print("--- Models ---")
-        want = list(CLF_MODELS) if MODELS == "auto" else ([MODELS] if isinstance(MODELS, str) else MODELS)
-        for n in want:
-            if n in CLF_MODELS: fit_eval_clf(n, CLF_MODELS[n](cw), Xtr, ytr, Xte, yte)
 
-        if RUN_SWEEPS:                    # sub-questions: delete any block you don't need
-            print("\n--- Sweep: KNN k = 1..10 ---")
-            ks, accs = [], []
-            for k in range(1, 11):
-                if k >= len(ytr): break
-                try:
-                    p = pipe(KNeighborsClassifier(n_neighbors=k)).fit(Xtr, ytr)
-                    a = accuracy_score(yte, p.predict(Xte)); ks.append(k); accs.append(a)
-                    print(f"  k={k:<3} acc={a:.3f}")
-                except Exception as e: print(f"  k={k} FAIL {str(e)[:60]}")
-            if ks and SHOW_PLOTS:
-                plt.figure(figsize=(5, 3)); plt.plot(ks, accs, "o-")
-                plt.xlabel("k"); plt.ylabel("test accuracy"); plt.title("KNN: accuracy vs k")
-                plt.tight_layout(); plt.show()
-                print(f"  best k = {ks[int(np.argmax(accs))]}")
+# Final dataset
+print(
+    "\nIntegrated dataset "
+    "(customer + purchase information):")
 
-            print("\n--- Sweep: Decision Tree gini vs entropy, depth 2..10/None ---")
-            rows = []
-            for crit in ("gini", "entropy"):
-                for d in [2, 3, 5, 10, None]:
-                    try:
-                        p = pipe(DecisionTreeClassifier(criterion=crit, max_depth=d,
-                                 class_weight=cw, random_state=SEED)).fit(Xtr, ytr)
-                        pr = p.predict(Xte)
-                        rows.append({"criterion": crit, "max_depth": str(d),
-                                     "acc": accuracy_score(yte, pr),
-                                     "f1": f1_score(yte, pr, average="weighted", zero_division=0)})
-                    except Exception as e: print(f"  {crit}/{d} FAIL {str(e)[:60]}")
-            if rows:
-                tree_tab = pd.DataFrame(rows); print(tree_tab.to_string(index=False))
-                if SHOW_PLOTS:
-                    plt.figure(figsize=(6, 3))
-                    sns.barplot(data=tree_tab, x="max_depth", y="acc", hue="criterion")
-                    plt.title("Decision Tree: depth & criterion"); plt.tight_layout(); plt.show()
+print(df_integrated)
 
-            print("\n--- Sweep: SVM kernels ---")
-            for kern in ("linear", "rbf", "poly", "sigmoid"):
-                try:
-                    p = pipe(SVC(kernel=kern, probability=False, class_weight=cw, random_state=SEED)).fit(Xtr, ytr)
-                    print(f"  {kern:<8} acc={accuracy_score(yte, p.predict(Xte)):.3f}")
-                except Exception as e: print(f"  {kern} FAIL {str(e)[:60]}")
+# ============================================================
+# MULTI-CLASS CLASSIFICATION - OBESITY LEVEL PREDICTION
+# ============================================================
 
-            print("\n--- Sweep: unbalanced vs class_weight='balanced' (Logistic) ---")
-            for lbl, w in (("plain", None), ("balanced", "balanced")):
-                try:
-                    p = pipe(LogisticRegression(max_iter=2000, class_weight=w, random_state=SEED)).fit(Xtr, ytr)
-                    pr = p.predict(Xte)
-                    print(f"  {lbl:<9} acc={accuracy_score(yte, pr):.3f} "
-                          f"recall={recall_score(yte, pr, average='weighted', zero_division=0):.3f} "
-                          f"f1={f1_score(yte, pr, average='weighted', zero_division=0):.3f}")
-                except Exception as e: print(f"  {lbl} FAIL {str(e)[:60]}")
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
 
-    else:  # ---------------- regression ----------------
-        print("\n--- Baseline ---")
-        fit_eval_reg("BASELINE (mean)", DummyRegressor(strategy="mean"), Xtr, ytr, Xte, yte)
-        print("--- Models ---")
-        want = list(REG_MODELS) if MODELS == "auto" else ([MODELS] if isinstance(MODELS, str) else MODELS)
-        best_feat = None
-        if num_cols:
-            c = Xtr[num_cols].corrwith(ytr).abs().sort_values(ascending=False)
-            best_feat = c.index[0] if len(c) else None
-        for n in want:
-            if n == "linear_simple":
-                if best_feat: fit_eval_reg(f"linear_simple ({best_feat})", LinearRegression(),
-                                           Xtr, ytr, Xte, yte, cols=[best_feat])
-            elif n in REG_MODELS:
-                fit_eval_reg(n, REG_MODELS[n](), Xtr, ytr, Xte, yte)
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-        if RUN_SWEEPS:
-            print("\n--- Sweep: Regression tree depth ---")
-            for d in [2, 3, 5, 10, None]:
-                try:
-                    p = pipe(DecisionTreeRegressor(max_depth=d, random_state=SEED)).fit(Xtr, ytr)
-                    pr = p.predict(Xte)
-                    print(f"  depth={str(d):<5} RMSE={np.sqrt(mean_squared_error(yte, pr)):.3f} R2={r2_score(yte, pr):.3f}")
-                except Exception as e: print(f"  depth={d} FAIL {str(e)[:60]}")
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier, OneVsOneClassifier
+from sklearn.metrics import accuracy_score
 
-# =============================================================================
-# 8) CLUSTERING  ·  KMeans + elbow + silhouette + PCA  (TASK="clustering")
-# =============================================================================
-k_best = None
-if task == "clustering":
-    Xc = make_prep(True).fit_transform(X)                  # scaling matters a lot for KMeans
-    ks, inertia, sils = [], [], []
-    for k in range(2, min(11, len(X))):                    # elbow + silhouette search
-        try:
-            km = KMeans(n_clusters=k, random_state=SEED, n_init=10).fit(Xc)
-            ks.append(k); inertia.append(km.inertia_); sils.append(silhouette_score(Xc, km.labels_))
-            print(f"  k={k:<3} WCSS={km.inertia_:11.2f}  silhouette={sils[-1]:.3f}")
-        except Exception as e:
-            FAILED.append((f"KMeans k={k}", str(e)[:120])); print(f"  k={k} FAIL {str(e)[:80]}")
-    if sils:
-        k_best = K_CLUSTERS or ks[int(np.argmax(sils))]    # K_CLUSTERS wins if you set it
-        for k, w, s in zip(ks, inertia, sils):
-            RESULTS.append({"Model": f"KMeans k={k}" + ("  <= chosen" if k == k_best else ""),
-                            "Inertia (WCSS)": w, "Silhouette": s, "Main Score": s})
-        km = KMeans(n_clusters=k_best, random_state=SEED, n_init=10).fit(Xc)
-        labels = km.labels_
-        print(f"\nChosen k = {k_best} | WCSS={km.inertia_:.2f} | silhouette={silhouette_score(Xc, labels):.3f}")
-        print("Cluster sizes:"); print(pd.Series(labels).value_counts().sort_index().to_string())
-        if SHOW_PLOTS:
-            fig, ax = plt.subplots(1, 3, figsize=(14, 3.5))
-            ax[0].plot(ks, inertia, "o-"); ax[0].set_title("Elbow method (WCSS)"); ax[0].set_xlabel("k")
-            ax[1].plot(ks, sils, "o-"); ax[1].set_title("Silhouette score"); ax[1].set_xlabel("k")
-            pc = PCA(n_components=2, random_state=SEED).fit_transform(Xc)
-            ax[2].scatter(pc[:, 0], pc[:, 1], c=labels, cmap="viridis", s=18)
-            cen = PCA(n_components=2, random_state=SEED).fit(Xc).transform(km.cluster_centers_)
-            ax[2].scatter(cen[:, 0], cen[:, 1], c="red", marker="X", s=160)
-            ax[2].set_title(f"PCA view of {k_best} clusters")
-            plt.tight_layout(); plt.show()
-        X_clustered = X.copy(); X_clustered["cluster"] = labels   # <- table with cluster labels
-        print("\nCluster means (numeric features):")
-        print(X_clustered.groupby("cluster")[num_cols].mean().round(2) if num_cols else "no numeric columns")
+import warnings
+warnings.filterwarnings('ignore')
 
-# =============================================================================
-# 9) COMPARISON TABLE + BEST-MODEL VISUALS + SUMMARY
-# =============================================================================
-print("\n" + "=" * 78 + "\nMODEL COMPARISON\n" + "=" * 78)
-comp = pd.DataFrame()
-if RESULTS:
-    comp = pd.DataFrame(RESULTS).sort_values("Main Score", ascending=False).reset_index(drop=True)
-    print(comp.round(4).to_string(index=False))
-    if SHOW_PLOTS and len(comp) > 1:
-        plt.figure(figsize=(7, .45 * len(comp) + 1.5))
-        sns.barplot(data=comp, y="Model", x="Main Score", palette="viridis")
-        plt.title(f"Model comparison – {'F1' if task=='classification' else 'R2' if task=='regression' else 'Silhouette'}")
-        plt.tight_layout(); plt.show()
 
-    best = comp.loc[0, "Model"]
-    bp = FITTED.get(best)
+# ------------------------------------------------------------
+# 2. IMPORT THE DATASET
+# ------------------------------------------------------------
 
-    if task == "classification" and bp is not None:
-        pred = bp.predict(Xte)
-        print(f"\nClassification report – {best}")
-        print(classification_report(yte, pred, target_names=classes, zero_division=0))
-        if SHOW_PLOTS:                                   # confusion matrix + ROC of the winner
-            fig, ax = plt.subplots(1, 2, figsize=(11, 4))
-            ConfusionMatrixDisplay(confusion_matrix(yte, pred), display_labels=classes).plot(ax=ax[0], colorbar=False)
-            ax[0].set_title(f"Confusion matrix – {best}")
-            try:                                         # ROC needs probabilities
-                pr = bp.predict_proba(Xte)
-                if pr.shape[1] == 2:
-                    fpr, tpr, _ = roc_curve(yte, pr[:, 1])
-                    ax[1].plot(fpr, tpr, label=f"AUC={roc_auc_score(yte, pr[:,1]):.3f}")
-                    ax[1].plot([0, 1], [0, 1], "--k"); ax[1].set_xlabel("FPR"); ax[1].set_ylabel("TPR")
-                    ax[1].set_title("ROC curve"); ax[1].legend()
-                else: ax[1].axis("off"); ax[1].set_title("ROC: multiclass -> see ROC_AUC (ovr) in table")
-            except Exception: ax[1].axis("off")
-            plt.tight_layout(); plt.show()
+data = pd.read_csv("/Users/titlibhattacharya/Downloads/Obesity_level_prediction_dataset.csv")
 
-    if task == "regression" and bp is not None and SHOW_PLOTS:
-        pred = bp.predict(Xte); res = yte - pred
-        fig, ax = plt.subplots(1, 2, figsize=(11, 4))
-        ax[0].scatter(yte, pred, alpha=.6); lim = [min(yte.min(), pred.min()), max(yte.max(), pred.max())]
-        ax[0].plot(lim, lim, "--r"); ax[0].set_xlabel("Actual"); ax[0].set_ylabel("Predicted")
-        ax[0].set_title(f"Actual vs Predicted – {best}")
-        ax[1].scatter(pred, res, alpha=.6); ax[1].axhline(0, ls="--", c="r")
-        ax[1].set_xlabel("Predicted"); ax[1].set_ylabel("Residual"); ax[1].set_title("Residual plot")
-        plt.tight_layout(); plt.show()
+df = pd.DataFrame(data)
+print("Dataset:")
+print(df)
 
-    # feature importance / coefficients of the best model (only if it has them)
-    if bp is not None and SHOW_PLOTS and task in ("classification", "regression"):
-        try:
-            names = bp[:-1].get_feature_names_out()
-            est = bp[-1]
-            imp = (est.feature_importances_ if hasattr(est, "feature_importances_")
-                   else np.abs(np.ravel(est.coef_)) if hasattr(est, "coef_") else None)
-            if imp is not None and len(imp) == len(names):
-                s = pd.Series(imp, index=names).sort_values(ascending=False)[:15]
-                plt.figure(figsize=(6, .35 * len(s) + 1.2)); sns.barplot(x=s.values, y=s.index, palette="mako")
-                plt.title(f"Feature importance – {best}"); plt.tight_layout(); plt.show()
-        except Exception: pass
 
-print("\n" + "=" * 78 + "\nSUMMARY\n" + "=" * 78)
-print(f"Task            : {task}")
-print(f"Target          : {target}")
-print(f"Rows x features : {X.shape[0]} x {X.shape[1]}   (seed={SEED})")
-if task != "clustering":
-    print(f"Train / Test    : {len(Xtr)} / {len(Xte)}")
-    base = [r for r in RESULTS if r["Model"].startswith("BASELINE")]
-    if base: print(f"Baseline        : {base[0]['Main Score']:.4f}")
-if len(comp):
-    if task == "clustering":
-        print(f"Chosen clusters : k = {k_best}")
-    print(f"Best model      : {comp.loc[0,'Model']}   Main Score = {comp.loc[0,'Main Score']:.4f}")
-    if task == "classification":
-        print(f"Interpretation  : best F1={comp.loc[0,'F1']:.3f}, accuracy={comp.loc[0,'Accuracy']:.3f}"
-              f"{' — beats the baseline, so the features carry real signal.' if len(base) and comp.loc[0,'Main Score'] > base[0]['Main Score'] else ' — no better than baseline, features may be weak.'}")
-    elif task == "regression":
-        print(f"Interpretation  : R2={comp.loc[0,'R2']:.3f} -> explains {100*max(comp.loc[0,'R2'],0):.1f}% of the variance; "
-              f"RMSE={comp.loc[0,'RMSE']:.3f} in target units.")
-    else:
-        print("Interpretation  : highest silhouette = best separated clusters; elbow confirms the k choice.")
-print(f"Failed models   : {[f for f,_ in FAILED] if FAILED else 'none'}")
+# ------------------------------------------------------------
+# 3. BASIC DATA UNDERSTANDING
+# ------------------------------------------------------------
+
+print("\n--- Dataset Information ---")
+df.info()
+
+print("\n--- First 5 Rows ---")
+print(df.head())
+
+print("\n--- Statistical Description ---")
+print(df.describe())
+
+
+# ------------------------------------------------------------
+# 4. VISUALIZE TARGET VARIABLE
+# ------------------------------------------------------------
+
+sns.countplot(y='NObeyesdad', data=df)
+
+plt.title('Distribution Of Obesity Levels')
+plt.show()
+
+
+# ------------------------------------------------------------
+# 5. CHECK FOR MISSING VALUES
+# ------------------------------------------------------------
+
+print("\n--- Missing Values ---")
+print(df.isnull().sum())
+
+
+# ------------------------------------------------------------
+# 6. FEATURE SCALING
+# ------------------------------------------------------------
+
+# Select continuous numerical columns
+continuous_columns = data.select_dtypes(
+    include=['float64']
+).columns.tolist()
+
+print("\nContinuous Columns:")
+print(continuous_columns)
+
+
+# Create StandardScaler
+scaler = StandardScaler()
+
+
+# Fit and transform continuous columns
+scaled_features = scaler.fit_transform(
+    data[continuous_columns])
+
+
+# Convert scaled values into DataFrame
+scaled_df = pd.DataFrame(scaled_features, columns=scaler.get_feature_names_out(continuous_columns))
+
+
+# Combine scaled columns with non-continuous columns
+scaled_data = pd.concat([data.drop(columns=continuous_columns),scaled_df],axis=1)
+
+
+print("\n--- Scaled Data ---")
+print(scaled_data.head())
+
+
+# ------------------------------------------------------------
+# 7. IDENTIFY CATEGORICAL COLUMNS
+# ------------------------------------------------------------
+
+categorical_columns = scaled_data.select_dtypes(include=['object']).columns.tolist()
+
+# Remove target variable
+categorical_columns.remove('NObeyesdad')
+
+print("\nCategorical Columns:")
+print(categorical_columns)
+
+
+# ------------------------------------------------------------
+# 8. ONE-HOT ENCODING
+# ------------------------------------------------------------
+
+encoder = OneHotEncoder(sparse_output=False,drop='first')
+
+
+# Fit and transform categorical features
+encoded_features = encoder.fit_transform(scaled_data[categorical_columns])
+
+
+# Convert encoded values into DataFrame
+encoded_df = pd.DataFrame(encoded_features,columns=encoder.get_feature_names_out(categorical_columns))
+
+
+# Remove original categorical columns
+# and add encoded columns
+prepped_data = pd.concat(
+    [scaled_data.drop(columns=categorical_columns),encoded_df],axis=1)
+
+
+print("\n--- Data After One-Hot Encoding ---")
+print(prepped_data.head())
+
+
+# ------------------------------------------------------------
+# 9. ENCODE THE TARGET VARIABLE
+# ------------------------------------------------------------
+
+prepped_data['NObeyesdad'] = (prepped_data['NObeyesdad'].astype('category').cat.codes)
+
+
+print("\n--- Final Prepared Data ---")
+print(prepped_data.head())
+
+
+# ------------------------------------------------------------
+# 10. SEPARATE INPUT AND TARGET
+# ------------------------------------------------------------
+
+X = prepped_data.drop('NObeyesdad',axis=1)
+y = prepped_data['NObeyesdad']
+
+print("\nShape of X:", X.shape)
+print("Shape of y:", y.shape)
+
+
+# ------------------------------------------------------------
+# 11. SPLIT DATA INTO TRAINING AND TESTING
+# ------------------------------------------------------------
+
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2,random_state=42,stratify=y)
+
+print("\nTraining data shape:", X_train.shape)
+print("Testing data shape:", X_test.shape)
+
+
+# ------------------------------------------------------------
+# 12. ONE-VS-REST / ONE-VS-ALL LOGISTIC REGRESSION
+# ------------------------------------------------------------
+
+model_ova = OneVsRestClassifier(LogisticRegression(max_iter=1000))
+
+
+# Train model
+model_ova.fit(X_train,y_train)
+
+
+# Make predictions
+y_pred_ova = model_ova.predict(X_test)
+
+
+# Calculate accuracy
+accuracy_ova = accuracy_score(y_test,y_pred_ova)
+
+
+print("\n====================================")
+print("ONE-VS-ALL (OvA) STRATEGY")
+print("====================================")
+
+print(f"Accuracy: {np.round(100 * accuracy_ova, 2)}%")
+
+
+# ------------------------------------------------------------
+# 13. ONE-VS-ONE LOGISTIC REGRESSION
+# ------------------------------------------------------------
+
+model_ovo = OneVsOneClassifier(LogisticRegression(max_iter=1000))
+
+
+# Train model
+model_ovo.fit(X_train,y_train)
+
+# Make predictions
+y_pred_ovo = model_ovo.predict(X_test)
+
+# Calculate accuracy
+accuracy_ovo = accuracy_score(y_test,y_pred_ovo)
+
+
+print("\n====================================")
+print("ONE-VS-ONE (OvO) STRATEGY")
+print("====================================")
+
+print(f"Accuracy: {np.round(100 * accuracy_ovo, 2)}%")
+
+
+# ------------------------------------------------------------
+# 14. COMPARE BOTH MODELS
+# ------------------------------------------------------------
+
+print("\n====================================")
+print("MODEL COMPARISON")
+print("====================================")
+
+print( f"One-vs-All Accuracy : "f"{np.round(100 * accuracy_ova, 2)}%")
+
+print(f"One-vs-One Accuracy : "f"{np.round(100 * accuracy_ovo, 2)}%")
+
+
+# ============================================================
+# LOGISTIC REGRESSION - CUSTOMER CHURN DATASET
+# ============================================================
+
+
+\-------------------------------------------------------
+
+
+
+
+# ------------------------------------------------------------
+# 2. IMPORT THE DATASET
+# ------------------------------------------------------------
+
+churn_data = pd.read_excel(
+    "/Users/titlibhattacharya/Downloads/ChurnData.xlsx"
+)
+
+churn_df = pd.DataFrame(churn_data)
+
+print("Customer Churn Dataset:")
+print(churn_df)
+
+
+# ------------------------------------------------------------
+# 3. CHECK FOR MISSING VALUES
+# ------------------------------------------------------------
+
+print("\nMissing values:")
+print(churn_df.isnull().sum())
+
+
+# ------------------------------------------------------------
+# 4. VIEW FIRST 5 ROWS
+# ------------------------------------------------------------
+
+print("\nFirst 5 rows:")
+print(churn_df.head())
+
+
+# ------------------------------------------------------------
+# 5. SELECT REQUIRED COLUMNS
+# ------------------------------------------------------------
+
+churn_df = churn_df[
+    [
+        'tenure',
+        'age',
+        'address',
+        'income',
+        'ed',
+        'employ',
+        'equip',
+        'churn'
+    ]
+]
+
+
+# Convert churn into integer
+churn_df['churn'] = churn_df['churn'].astype('int')
+
+print("\nSelected data:")
+print(churn_df)
+
+
+# ------------------------------------------------------------
+# 6. DEFINE INPUT FEATURES (X)
+# ------------------------------------------------------------
+
+X = np.asarray(
+    churn_df[
+        [
+            'tenure',
+            'age',
+            'address',
+            'income',
+            'ed',
+            'employ',
+            'equip'
+        ]
+    ]
+)
+
+print("\nFirst 5 rows of X:")
+print(X[0:5])
+
+
+# ------------------------------------------------------------
+# 7. DEFINE TARGET VARIABLE (y)
+# ------------------------------------------------------------
+
+y = np.asarray(
+    churn_df['churn']
+)
+
+print("\nFirst 5 values of y:")
+print(y[0:5])
+
+
+# ------------------------------------------------------------
+# 8. STANDARDIZE THE FEATURES
+# ------------------------------------------------------------
+
+scaler = StandardScaler()
+
+X_norm = scaler.fit_transform(X)
+
+print("\nFirst 5 rows after StandardScaler:")
+print(X_norm[0:5])
+
+
+# ------------------------------------------------------------
+# 9. TRAIN-TEST SPLIT
+# ------------------------------------------------------------
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_norm,
+    y,
+    test_size=0.2,
+    random_state=4
+)
+
+print("\nTraining data shape:")
+print(X_train.shape)
+
+print("\nTesting data shape:")
+print(X_test.shape)
+
+
+# ------------------------------------------------------------
+# 10. CREATE AND TRAIN LOGISTIC REGRESSION MODEL
+# ------------------------------------------------------------
+
+LR = LogisticRegression()
+
+LR.fit(
+    X_train,
+    y_train
+)
+
+
+# ------------------------------------------------------------
+# 11. PREDICT CLASS LABELS
+# ------------------------------------------------------------
+
+yhat = LR.predict(X_test)
+
+print("\nPredicted values:")
+print(yhat[:10])
+
+
+# ------------------------------------------------------------
+# 12. PREDICT PROBABILITIES
+# ------------------------------------------------------------
+
+yhat_prob = LR.predict_proba(X_test)
+
+print("\nPredicted probabilities:")
+print(yhat_prob[:10])
+
+
+# ------------------------------------------------------------
+# 13. VIEW LOGISTIC REGRESSION COEFFICIENTS
+# ------------------------------------------------------------
+
+coefficients = pd.Series(
+    LR.coef_[0],
+    index=churn_df.columns[:-1]
+)
+
+print("\nFeature coefficients:")
+print(coefficients)
+
+
+# Plot coefficients
+coefficients.sort_values().plot(
+    kind='barh'
+)
+
+plt.title(
+    "Feature Coefficients in Logistic Regression Churn Model"
+)
+
+plt.xlabel(
+    "Coefficient Value"
+)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 14. CALCULATE LOG LOSS
+# ------------------------------------------------------------
+
+loss = log_loss(
+    y_test,
+    yhat_prob
+)
+
+print("\nLog Loss:")
+print(loss)
+
+
+# ============================================================
+# ADDING 'CALLCARD' AS AN ADDITIONAL FEATURE
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 15. CREATE DATASET WITH CALLCARD
+# ------------------------------------------------------------
+
+churn_df = churn_data[
+    [
+        'tenure',
+        'age',
+        'address',
+        'income',
+        'ed',
+        'employ',
+        'equip',
+        'churn',
+        'callcard'
+    ]
+]
+
+
+# ------------------------------------------------------------
+# 16. DEFINE X WITH CALLCARD
+# ------------------------------------------------------------
+
+X = churn_df[
+    [
+        'tenure',
+        'age',
+        'address',
+        'income',
+        'ed',
+        'employ',
+        'equip',
+        'callcard'
+    ]
+]
+
+
+# ------------------------------------------------------------
+# 17. DEFINE y
+# ------------------------------------------------------------
+
+y = churn_df['churn']
+
+
+# ------------------------------------------------------------
+# 18. STANDARDIZE X
+# ------------------------------------------------------------
+
+X_norm = StandardScaler().fit_transform(X)
+
+
+# ------------------------------------------------------------
+# 19. TRAIN-TEST SPLIT
+# ------------------------------------------------------------
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_norm,
+    y,
+    test_size=0.2,
+    random_state=4
+)
+
+
+# ------------------------------------------------------------
+# 20. TRAIN LOGISTIC REGRESSION
+# ------------------------------------------------------------
+
+LR = LogisticRegression()
+
+LR.fit(
+    X_train,
+    y_train
+)
+
+
+# ------------------------------------------------------------
+# 21. PREDICT CLASS
+# ------------------------------------------------------------
+
+yhat = LR.predict(X_test)
+
+
+# ------------------------------------------------------------
+# 22. PREDICT PROBABILITIES
+# ------------------------------------------------------------
+
+yhat_prob = LR.predict_proba(X_test)
+
+
+# ------------------------------------------------------------
+# 23. CALCULATE LOG LOSS WITH CALLCARD
+# ------------------------------------------------------------
+
+loss_callcard = log_loss(
+    y_test,
+    yhat_prob
+)
+
+print("\nLog Loss after adding callcard:")
+print(loss_callcard)
+
+# ============================================================
+# NAIVE BAYES CLASSIFICATION
+# IRIS DATASET
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
+
+import pandas as pd
+import numpy as np
+
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix
+)
+
+
+# ------------------------------------------------------------
+# 2. LOAD THE IRIS DATASET
+# ------------------------------------------------------------
+
+iris = load_iris()
+
+X = iris.data
+y = iris.target
+
+
+# ------------------------------------------------------------
+# 3. VIEW THE DATA
+# ------------------------------------------------------------
+
+print("Features:")
+print(X)
+
+print("\nTarget:")
+print(y)
+
+print("\nFeature names:")
+print(iris.feature_names)
+
+print("\nTarget names:")
+print(iris.target_names)
+
+
+# ------------------------------------------------------------
+# 4. SPLIT DATA INTO TRAINING AND TESTING SETS
+# ------------------------------------------------------------
+
+# 80% training data
+# 20% testing data
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
+)
+
+
+print("\nTraining data shape:")
+print(X_train.shape)
+
+print("\nTesting data shape:")
+print(X_test.shape)
+
+
+# ------------------------------------------------------------
+# 5. INITIALIZE GAUSSIAN NAIVE BAYES CLASSIFIER
+# ------------------------------------------------------------
+
+model = GaussianNB()
+
+
+# ------------------------------------------------------------
+# 6. TRAIN THE MODEL
+# ------------------------------------------------------------
+
+model.fit(
+    X_train,
+    y_train
+)
+
+
+# ------------------------------------------------------------
+# 7. MAKE PREDICTIONS
+# ------------------------------------------------------------
+
+y_pred = model.predict(
+    X_test
+)
+
+
+print("\nPredicted values:")
+print(y_pred)
+
+print("\nActual values:")
+print(y_test)
+
+
+# ------------------------------------------------------------
+# 8. CALCULATE ACCURACY
+# ------------------------------------------------------------
+
+accuracy = accuracy_score(
+    y_test,
+    y_pred
+)
+
+print(
+    f"\nAccuracy: {accuracy * 100:.2f}%"
+)
+
+
+# ------------------------------------------------------------
+# 9. CLASSIFICATION REPORT
+# ------------------------------------------------------------
+
+print(
+    "\nClassification Report:\n",
+    classification_report(
+        y_test,
+        y_pred,
+        target_names=iris.target_names
+    )
+)
+
+
+# ------------------------------------------------------------
+# 10. CONFUSION MATRIX
+# ------------------------------------------------------------
+
+cm = confusion_matrix(
+    y_test,
+    y_pred
+)
+
+print("\nConfusion Matrix:")
+print(cm)
+
+
+# ------------------------------------------------------------
+# 11. DISPLAY CONFUSION MATRIX
+# ------------------------------------------------------------
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.figure(figsize=(6, 5))
+
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt='d',
+    cmap='Blues',
+    xticklabels=iris.target_names,
+    yticklabels=iris.target_names
+)
+
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.title("Confusion Matrix - Gaussian Naive Bayes")
+
+plt.show()
+
+# ============================================================
+# DECISION TREE CLASSIFICATION - DRUG200 DATASET
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 1. IMPORT LIBRARIES
+# ------------------------------------------------------------
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn import metrics
+
+%matplotlib inline
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# ------------------------------------------------------------
+# 2. IMPORT THE DATASET
+# ------------------------------------------------------------
+
+drugs = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/drug200.csv"
+)
+
+my_data = pd.DataFrame(drugs)
+
+print(my_data)
+
+
+# ------------------------------------------------------------
+# 3. VIEW FIRST 5 ROWS
+# ------------------------------------------------------------
+
+print("\nFirst 5 rows:")
+print(my_data.head())
+
+
+# ------------------------------------------------------------
+# 4. VIEW LAST 5 ROWS
+# ------------------------------------------------------------
+
+print("\nLast 5 rows:")
+print(my_data.tail())
+
+
+# ------------------------------------------------------------
+# 5. CHECK DATA INFORMATION
+# ------------------------------------------------------------
+
+print("\nDataset information:")
+my_data.info()
+
+
+# ------------------------------------------------------------
+# 6. CHECK MISSING VALUES
+# ------------------------------------------------------------
+
+print("\nMissing values:")
+print(my_data.isnull().sum())
+
+
+# ------------------------------------------------------------
+# 7. LABEL ENCODING
+# ------------------------------------------------------------
+
+label_encoder = LabelEncoder()
+
+my_data['Sex'] = label_encoder.fit_transform(
+    my_data['Sex']
+)
+
+my_data['BP'] = label_encoder.fit_transform(
+    my_data['BP']
+)
+
+my_data['Cholesterol'] = label_encoder.fit_transform(
+    my_data['Cholesterol']
+)
+
+print("\nData after Label Encoding:")
+print(my_data)
+
+
+# ------------------------------------------------------------
+# 8. MANUALLY ENCODE THE TARGET VARIABLE
+# ------------------------------------------------------------
+
+custom_map = {
+    'drugA': 0,
+    'drugB': 1,
+    'drugC': 2,
+    'drugX': 3,
+    'drugY': 4
+}
+
+my_data['Drug_num'] = my_data['Drug'].map(
+    custom_map
+)
+
+print("\nData after creating Drug_num:")
+print(my_data)
+
+
+# ------------------------------------------------------------
+# 9. CHECK DATA TYPES
+# ------------------------------------------------------------
+
+print("\nData types:")
+print(my_data.dtypes)
+
+
+# ------------------------------------------------------------
+# 10. CHECK CORRELATION WITH DRUG_NUM
+# ------------------------------------------------------------
+
+print("\nCorrelation with Drug_num:")
+print(
+    my_data.select_dtypes(
+        include='number'
+    ).corr()['Drug_num']
+)
+
+
+# ------------------------------------------------------------
+# 11. CORRELATION AFTER DROPPING ORIGINAL DRUG COLUMN
+# ------------------------------------------------------------
+
+print("\nCorrelation with Drug_num:")
+print(
+    my_data.drop(
+        ['Drug'],
+        axis=1
+    ).corr()['Drug_num']
+)
+
+
+# ------------------------------------------------------------
+# 12. VISUALIZE DRUG CATEGORY DISTRIBUTION
+# ------------------------------------------------------------
+
+category_counts = my_data['Drug'].value_counts()
+
+plt.bar(
+    category_counts.index,
+    category_counts.values
+)
+
+plt.xlabel('Drug')
+plt.ylabel('Count')
+plt.title('Category Distribution')
+
+plt.xticks(rotation=45)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 13. COUNT EACH DRUG CATEGORY
+# ------------------------------------------------------------
+
+print("\nDrug category counts:")
+print(
+    my_data['Drug'].value_counts()
+)
+
+
+# ------------------------------------------------------------
+# 14. DEFINE TARGET VARIABLE (y)
+# ------------------------------------------------------------
+
+y = my_data['Drug']
+
+
+# ------------------------------------------------------------
+# 15. DEFINE INPUT FEATURES (X)
+# ------------------------------------------------------------
+
+X = my_data.drop(
+    ['Drug', 'Drug_num'],
+    axis=1
+)
+
+print("\nFeatures (X):")
+print(X.head())
+
+print("\nTarget (y):")
+print(y.head())
+
+
+# ------------------------------------------------------------
+# 16. TRAIN-TEST SPLIT
+# ------------------------------------------------------------
+
+X_trainset, X_testset, y_trainset, y_testset = train_test_split(
+    X,
+    y,
+    test_size=0.3,
+    random_state=32
+)
+
+print("\nTraining data shape:")
+print(X_trainset.shape)
+
+print("\nTesting data shape:")
+print(X_testset.shape)
+
+
+# ------------------------------------------------------------
+# 17. CREATE DECISION TREE
+# ------------------------------------------------------------
+
+drugTree = DecisionTreeClassifier(
+    criterion="entropy",
+    max_depth=4
+)
+
+
+# ------------------------------------------------------------
+# 18. TRAIN DECISION TREE
+# ------------------------------------------------------------
+
+drugTree.fit(
+    X_trainset,
+    y_trainset
+)
+
+
+# ------------------------------------------------------------
+# 19. MAKE PREDICTIONS
+# ------------------------------------------------------------
+
+tree_predictions = drugTree.predict(
+    X_testset
+)
+
+print("\nPredictions:")
+print(tree_predictions)
+
+
+# ------------------------------------------------------------
+# 20. CALCULATE ACCURACY
+# ------------------------------------------------------------
+
+accuracy = metrics.accuracy_score(
+    y_testset,
+    tree_predictions
+)
+
+print(
+    "\nDecision Tree's Accuracy:",
+    accuracy
+)
+
+
+# ------------------------------------------------------------
+# 21. DISPLAY DECISION TREE
+# ------------------------------------------------------------
+
+plt.figure(figsize=(20, 10))
+
+plot_tree(
+    drugTree,
+    feature_names=X.columns,
+    class_names=drugTree.classes_,
+    filled=True
+)
+
+plt.show()
+
+
+# ============================================================
+# QUESTION:
+# IF DEPTH IS REDUCED FROM 4 TO 3,
+# HOW DOES MODEL PERFORMANCE CHANGE?
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 22. CREATE DECISION TREE WITH MAX_DEPTH = 3
+# ------------------------------------------------------------
+
+drugTree_depth3 = DecisionTreeClassifier(
+    criterion="entropy",
+    max_depth=3
+)
+
+
+# ------------------------------------------------------------
+# 23. TRAIN DEPTH-3 TREE
+# ------------------------------------------------------------
+
+drugTree_depth3.fit(
+    X_trainset,
+    y_trainset
+)
+
+
+# ------------------------------------------------------------
+# 24. PREDICT USING DEPTH-3 TREE
+# ------------------------------------------------------------
+
+tree_predictions_depth3 = drugTree_depth3.predict(
+    X_testset
+)
+
+
+# ------------------------------------------------------------
+# 25. CALCULATE DEPTH-3 ACCURACY
+# ------------------------------------------------------------
+
+accuracy_depth3 = metrics.accuracy_score(
+    y_testset,
+    tree_predictions_depth3
+)
+
+print(
+    "\nDecision Tree Accuracy with max_depth=3:",
+    accuracy_depth3
+)
+
+
+# ------------------------------------------------------------
+# 26. COMPARE BOTH MODELS
+# ------------------------------------------------------------
+
+print("\n====================================")
+print("DECISION TREE COMPARISON")
+print("====================================")
+
+print(
+    "Accuracy with max_depth=4:",
+    accuracy
+)
+
+print(
+    "Accuracy with max_depth=3:",
+    accuracy_depth3
+)
+
+
+# ------------------------------------------------------------
+# 27. DISPLAY DEPTH-3 TREE
+# ------------------------------------------------------------
+
+plt.figure(figsize=(20, 10))
+
+plot_tree(
+    drugTree_depth3,
+    feature_names=X.columns,
+    class_names=drugTree_depth3.classes_,
+    filled=True
+)
+
+plt.show()
+
+# ============================================================
+# DECISION TREE CLASSIFICATION - IRIS DATASET
+# ============================================================
+
+# 1. IMPORT LIBRARIES
+
+import pandas as pd
+import numpy as np
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn import metrics
+import matplotlib.pyplot as plt
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# 2. LOAD IRIS DATASET
+
+iris = datasets.load_iris()
+
+
+# 3. CREATE DATAFRAME
+
+df = pd.DataFrame(
+    iris.data,
+    columns=iris.feature_names
+)
+
+df["target"] = iris.target
+
+print(df.head())
+
+
+# 4. BASIC DATA CHECK
+
+df.info()
+
+print("\nMissing values:")
+print(df.isnull().sum())
+
+print("\nCorrelation:")
+print(df.corr())
+
+print("\nTarget value counts:")
+print(df['target'].value_counts())
+
+
+# 5. DEFINE X AND y
+
+y = df["target"]
+
+x = df.drop(
+    ['target'],
+    axis=1
+)
+
+
+# 6. TRAIN-TEST SPLIT
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.3,
+    random_state=42
+)
+
+
+# ============================================================
+# 7. DECISION TREE USING ENTROPY
+# ============================================================
+
+tree_entropy = DecisionTreeClassifier(
+    criterion="entropy",
+    max_depth=8
+)
+
+tree_entropy.fit(
+    x_train,
+    y_train
+)
+
+tree_prediction_entropy = tree_entropy.predict(
+    x_test
+)
+
+accuracy_entropy = metrics.accuracy_score(
+    y_test,
+    tree_prediction_entropy
+)
+
+print(
+    "\nDecision Tree Accuracy - Entropy:",
+    accuracy_entropy
+)
+
+
+# 8. PLOT ENTROPY TREE
+
+plt.figure(figsize=(15, 10))
+
+plot_tree(
+    tree_entropy,
+    feature_names=x.columns,
+    class_names=iris.target_names,
+    filled=True
+)
+
+plt.show()
+
+
+# ============================================================
+# 9. DECISION TREE USING GINI
+# ============================================================
+
+tree_gini = DecisionTreeClassifier(
+    criterion="gini",
+    max_depth=8
+)
+
+tree_gini.fit(
+    x_train,
+    y_train
+)
+
+tree_prediction_gini = tree_gini.predict(
+    x_test
+)
+
+accuracy_gini = metrics.accuracy_score(
+    y_test,
+    tree_prediction_gini
+)
+
+print(
+    "\nDecision Tree Accuracy - Gini:",
+    accuracy_gini
+)
+
+
+# 10. PLOT GINI TREE
+
+plt.figure(figsize=(15, 10))
+
+plot_tree(
+    tree_gini,
+    feature_names=x.columns,
+    class_names=iris.target_names,
+    filled=True
+)
+
+plt.show()
+
+
+# ============================================================
+# 11. COMPARE ENTROPY AND GINI
+# ============================================================
+
+print("\n====================================")
+print("DECISION TREE COMPARISON")
+print("====================================")
+
+print(
+    "Entropy Accuracy:",
+    accuracy_entropy
+)
+
+print(
+    "Gini Accuracy:",
+    accuracy_gini
+)
+
+
+# ============================================================
+# MULTI-CLASS CLASSIFICATION
+# ONE-VS-ALL AND ONE-VS-ONE
+# OBESITY DATASET
+# ============================================================
+
+# 1. IMPORT LIBRARIES
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsOneClassifier
+from sklearn.metrics import accuracy_score
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# 2. IMPORT DATASET
+
+data = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/Obesity_level_prediction_dataset.csv"
+)
+
+print(data.head())
+
+
+# 3. BASIC DATA CHECK
+
+data.info()
+
+print("\nStatistical description:")
+print(data.describe())
+
+print("\nColumn names:")
+print(data.columns)
+
+
+# 4. TARGET DISTRIBUTION
+
+sns.countplot(
+    y='NObeyesdad',
+    data=data
+)
+
+plt.title("Distribution of Obesity Level")
+plt.show()
+
+
+# 5. CHECK MISSING VALUES
+
+print("\nMissing values:")
+print(data.isnull().sum())
+
+
+# ============================================================
+# 6. STANDARDIZE CONTINUOUS NUMERICAL FEATURES
+# ============================================================
+
+continuous_columns = data.select_dtypes(
+    include=["float64"]
+).columns.tolist()
+
+scaler = StandardScaler()
+
+scaled_features = scaler.fit_transform(
+    data[continuous_columns]
+)
+
+scaled_df = pd.DataFrame(
+    scaled_features,
+    columns=scaler.get_feature_names_out(
+        continuous_columns
+    )
+)
+
+scaled_data = pd.concat(
+    [
+        data.drop(columns=continuous_columns),
+        scaled_df
+    ],
+    axis=1
+)
+
+
+# ============================================================
+# 7. ONE-HOT ENCODE CATEGORICAL FEATURES
+# ============================================================
+
+categorical_columns = scaled_data.select_dtypes(
+    include=["object"]
+).columns.tolist()
+
+categorical_columns.remove(
+    "NObeyesdad"
+)
+
+encoder = OneHotEncoder(
+    sparse_output=False,
+    drop="first"
+)
+
+encoded_features = encoder.fit_transform(
+    scaled_data[categorical_columns]
+)
+
+encoded_df = pd.DataFrame(
+    encoded_features,
+    columns=encoder.get_feature_names_out(
+        categorical_columns
+    )
+)
+
+prepped_data = pd.concat(
+    [
+        scaled_data.drop(
+            columns=categorical_columns
+        ),
+        encoded_df
+    ],
+    axis=1
+)
+
+
+# ============================================================
+# 8. ENCODE TARGET VARIABLE
+# ============================================================
+
+prepped_data["NObeyesdad"] = (
+    prepped_data["NObeyesdad"]
+    .astype("category")
+    .cat.codes
+)
+
+
+# ============================================================
+# 9. DEFINE X AND y
+# ============================================================
+
+x = prepped_data.drop(
+    'NObeyesdad',
+    axis=1
+)
+
+y = prepped_data["NObeyesdad"]
+
+
+# ============================================================
+# 10. FUNCTION TO RUN OVA AND OVO
+# ============================================================
+
+def run_multiclass_models(
+    test_size,
+    random_state
+):
+
+    x_train, x_test, y_train, y_test = train_test_split(
+        x,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y
+    )
+
+
+    # --------------------------------------------------------
+    # ONE-VS-ALL
+    # --------------------------------------------------------
+
+    model_ova = LogisticRegression(
+        multi_class="ovr",
+        max_iter=1000
+    )
+
+    model_ova.fit(
+        x_train,
+        y_train
+    )
+
+    y_pred_ova = model_ova.predict(
+        x_test
+    )
+
+    accuracy_ova = accuracy_score(
+        y_test,
+        y_pred_ova
+    )
+
+
+    # --------------------------------------------------------
+    # ONE-VS-ONE
+    # --------------------------------------------------------
+
+    model_ovo = OneVsOneClassifier(
+        LogisticRegression(
+            max_iter=1000
+        )
+    )
+
+    model_ovo.fit(
+        x_train,
+        y_train
+    )
+
+    y_pred_ovo = model_ovo.predict(
+        x_test
+    )
+
+    accuracy_ovo = accuracy_score(
+        y_test,
+        y_pred_ovo
+    )
+
+
+    print(
+        f"\nTest size = {test_size}"
+    )
+
+    print(
+        "One-vs-All (OvA) Accuracy:",
+        np.round(100 * accuracy_ova, 2),
+        "%"
+    )
+
+    print(
+        "One-vs-One (OvO) Accuracy:",
+        np.round(100 * accuracy_ovo, 2),
+        "%"
+    )
+
+
+# ============================================================
+# 11. TEST SIZE = 0.2
+# ============================================================
+
+run_multiclass_models(
+    test_size=0.2,
+    random_state=42
+)
+
+
+# ============================================================
+# 12. TEST SIZE = 0.1
+# ============================================================
+
+run_multiclass_models(
+    test_size=0.1,
+    random_state=42
+)
+
+
+# ============================================================
+# 13. TEST SIZE = 0.3
+# ============================================================
+
+run_multiclass_models(
+    test_size=0.3,
+    random_state=45
+)
+
+
+
+# ============================================================
+# UNBALANCED DATA
+# DECISION TREE VS SVM
+# CREDIT CARD DATASET
+# ============================================================
+
+# 1. IMPORT LIBRARIES
+
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import normalize, StandardScaler
+from sklearn.utils.class_weight import compute_sample_weight
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.svm import LinearSVC
+
+import matplotlib.pyplot as plt
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# ============================================================
+# 2. IMPORT DATASET
+# ============================================================
+
+raw_data = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/creditcard(in).csv"
+)
+
+print(raw_data)
+
+
+# ============================================================
+# 3. BASIC DATA CHECK
+# ============================================================
+
+raw_data.info()
+
+print("\nStatistical description:")
+print(raw_data.describe())
+
+
+# ============================================================
+# 4. CHECK CLASS IMBALANCE
+# ============================================================
+
+labels = raw_data.Class.unique()
+
+size = raw_data.Class.value_counts().values
+
+fig, ax = plt.subplots()
+
+ax.pie(
+    size,
+    labels=labels,
+    autopct='%1.3f%%'
+)
+
+ax.set_title(
+    'Target Variable Value Count'
+)
+
+plt.show()
+
+
+# ============================================================
+# 5. CORRELATION WITH TARGET
+# ============================================================
+
+correlation_values = (
+    raw_data.corr()['Class']
+    .drop('Class')
+)
+
+correlation_values.plot(
+    kind='barh',
+    figsize=(10, 6)
+)
+
+plt.title(
+    "Correlation with Class"
+)
+
+plt.show()
+
+
+# ============================================================
+# 6. STANDARDIZE FEATURES
+# ============================================================
+
+raw_data.iloc[:, 1:30] = (
+    StandardScaler()
+    .fit_transform(
+        raw_data.iloc[:, 1:30]
+    )
+)
+
+
+# ============================================================
+# 7. CREATE X AND y
+# ============================================================
+
+data_matrix = raw_data.values
+
+x = data_matrix[:, 1:30]
+
+y = data_matrix[:, 30]
+
+
+# ============================================================
+# 8. NORMALIZE X
+# ============================================================
+
+x = normalize(
+    x,
+    norm='l1'
+)
+
+
+# ============================================================
+# 9. TRAIN-TEST SPLIT
+# ============================================================
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.3,
+    random_state=42
+)
+
+
+# ============================================================
+# 10. COMPUTE SAMPLE WEIGHTS
+# ============================================================
+
+w_train = compute_sample_weight(
+    'balanced',
+    y_train
+)
+
+
+# ============================================================
+# 11. DECISION TREE
+# ============================================================
+
+dt = DecisionTreeClassifier(
+    max_depth=4,
+    random_state=35
+)
+
+dt.fit(
+    x_train,
+    y_train,
+    sample_weight=w_train
+)
+
+
+# ============================================================
+# 12. DECISION TREE ROC-AUC
+# ============================================================
+
+y_pred_dt = dt.predict_proba(
+    x_test
+)[:, 1]
+
+roc_auc_dt = roc_auc_score(
+    y_test,
+    y_pred_dt
+)
+
+print(
+    'Decision Tree ROC-AUC score: '
+    '{0:.3f}'.format(roc_auc_dt)
+)
+
+
+# ============================================================
+# 13. SVM
+# ============================================================
+
+svm = LinearSVC(
+    class_weight='balanced',
+    random_state=31,
+    loss='hinge',
+    fit_intercept=False
+)
+
+svm.fit(
+    x_train,
+    y_train
+)
+
+
+# ============================================================
+# 14. SVM ROC-AUC
+# ============================================================
+
+y_pred_svm = svm.decision_function(
+    x_test
+)
+
+roc_auc_svm = roc_auc_score(
+    y_test,
+    y_pred_svm
+)
+
+print(
+    'SVM ROC-AUC score: '
+    '{0:.3f}'.format(roc_auc_svm)
+)
+
+
+# ============================================================
+# 15. FINAL COMPARISON
+# ============================================================
+
+print("\n====================================")
+print("MODEL COMPARISON")
+print("====================================")
+
+print(
+    "Decision Tree ROC-AUC:",
+    round(roc_auc_dt, 3)
+)
+
+print(
+    "SVM ROC-AUC:",
+    round(roc_auc_svm, 3)
+)
+
+
+# ============================================================
+# DECISION TREE REGRESSION
+# YELLOW TAXI TRIP DATASET
+# ============================================================
+
+# 1. IMPORT LIBRARIES
+
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import normalize
+from sklearn.metrics import mean_squared_error
+from sklearn.tree import DecisionTreeRegressor
+
+import matplotlib.pyplot as plt
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# ============================================================
+# 2. IMPORT DATASET
+# ============================================================
+
+raw_data = pd.read_csv(
+    "/Users/titlibhattacharya/Downloads/yellow_tripdata.csv"
+)
+
+print(raw_data)
+
+
+# ============================================================
+# 3. BASIC DATA CHECK
+# ============================================================
+
+print("\nStatistical description:")
+print(raw_data.describe())
+
+print("\nDataset information:")
+raw_data.info()
+
+
+# ============================================================
+# 4. CORRELATION WITH TIP_AMOUNT
+# ============================================================
+
+correlation_value = (
+    raw_data.corr()['tip_amount']
+    .drop('tip_amount')
+)
+
+correlation_value.plot(
+    kind='barh',
+    figsize=(10, 6)
+)
+
+plt.title(
+    "Correlation with Tip Amount"
+)
+
+plt.show()
+
+
+# ============================================================
+# 5. DEFINE TARGET VARIABLE
+# ============================================================
+
+y = raw_data[
+    ['tip_amount']
+].values.astype('float32')
+
+
+# ============================================================
+# 6. CREATE FEATURE DATA
+# ============================================================
+
+proc_data = raw_data.drop(
+    ['tip_amount'],
+    axis=1
+)
+
+x = proc_data.values
+
+
+# ============================================================
+# 7. NORMALIZE FEATURES
+# ============================================================
+
+x = normalize(
+    x,
+    axis=1,
+    norm='l1',
+    copy=False
+)
+
+
+# ============================================================
+# 8. TRAIN-TEST SPLIT
+# ============================================================
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.3,
+    random_state=42
+)
+
+
+# ============================================================
+# 9. DECISION TREE REGRESSION - DEPTH 8
+# ============================================================
+
+dt_reg_8 = DecisionTreeRegressor(
+    criterion="squared_error",
+    max_depth=8,
+    random_state=35
+)
+
+dt_reg_8.fit(
+    x_train,
+    y_train
+)
+
+
+# ============================================================
+# 10. PREDICTION - DEPTH 8
+# ============================================================
+
+y_pred_8 = dt_reg_8.predict(
+    x_test
+)
+
+
+# ============================================================
+# 11. MSE AND R² - DEPTH 8
+# ============================================================
+
+mse_score_8 = mean_squared_error(
+    y_test,
+    y_pred_8
+)
+
+r2_score_8 = dt_reg_8.score(
+    x_test,
+    y_test
+)
+
+print(
+    "\nDecision Tree Regression - max_depth=8"
+)
+
+print(
+    'MSE score: {0:.3f}'.format(
+        mse_score_8
+    )
+)
+
+print(
+    'R² score: {0:.3f}'.format(
+        r2_score_8
+    )
+)
+
+
+# ============================================================
+# 12. DECISION TREE REGRESSION - DEPTH 12
+# ============================================================
+
+dt_reg_12 = DecisionTreeRegressor(
+    criterion="squared_error",
+    max_depth=12,
+    random_state=35
+)
+
+dt_reg_12.fit(
+    x_train,
+    y_train
+)
+
+
+# ============================================================
+# 13. PREDICTION - DEPTH 12
+# ============================================================
+
+y_pred_12 = dt_reg_12.predict(
+    x_test
+)
+
+
+# ============================================================
+# 14. MSE AND R² - DEPTH 12
+# ============================================================
+
+mse_score_12 = mean_squared_error(
+    y_test,
+    y_pred_12
+)
+
+r2_score_12 = dt_reg_12.score(
+    x_test,
+    y_test
+)
+
+print(
+    "\nDecision Tree Regression - max_depth=12"
+)
+
+print(
+    'MSE score: {0:.3f}'.format(
+        mse_score_12
+    )
+)
+
+print(
+    'R² score: {0:.3f}'.format(
+        r2_score_12
+    )
+)
+
+
+# ============================================================
+# 15. COMPARE DEPTH 8 AND DEPTH 12
+# ============================================================
+
+print("\n====================================")
+print("MODEL COMPARISON")
+print("====================================")
+
+print(
+    "Depth 8 - MSE:",
+    round(mse_score_8, 3)
+)
+
+print(
+    "Depth 8 - R²:",
+    round(r2_score_8, 3)
+)
+
+print(
+    "Depth 12 - MSE:",
+    round(mse_score_12, 3)
+)
+
+print(
+    "Depth 12 - R²:",
+    round(r2_score_12, 3)
+)
+
+
